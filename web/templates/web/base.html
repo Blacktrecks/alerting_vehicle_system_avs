@@ -1,165 +1,31 @@
-{% load static %}
-<!doctype html>
-<html lang="en" data-theme="dark">
-
+{% load static %}<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Proximity Warning{% endblock %}</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}Proximity and Impact Warning{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'web/css/app.css' %}">
 </head>
-
-<body>
-  <div class="app-shell">
-    <aside class="sidebar" id="app-sidebar" aria-label="Main navigation">
-      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar"
-        aria-expanded="false">
-        <span class="sidebar-toggle-bars" aria-hidden="true"></span>
-      </button>
-
-      <div class="brand-block">
-        <div class="brand-mark">P</div>
-        <div>
-          <div class="brand-name">PROXIMITY</div>
-          <div class="brand-sub">Proximity and Impact Warning System</div>
-        </div>
-      </div>
-
-      <nav class="nav" aria-label="Main navigation">
-        <a class="nav-item" href="/" data-nav="dashboard" title="Dashboard">
-          <span class="nav-icon" aria-hidden="true">DB</span>
-          <span class="nav-label">Dashboard</span>
-        </a>
-        <a class="nav-item" href="/devices/" data-nav="devices" title="Devices">
-          <span class="nav-icon" aria-hidden="true">DV</span>
-          <span class="nav-label">Devices</span>
-        </a>
-        <a class="nav-item" href="/simulator/" data-nav="sim" title="Simulation">
-          <span class="nav-icon" aria-hidden="true">SM</span>
-          <span class="nav-label">Simulation</span>
-        </a>
-        <a class="nav-item" href="/tests/" data-nav="tests" title="Tests">
-          <span class="nav-icon" aria-hidden="true">TS</span>
-          <span class="nav-label">Tests</span>
-        </a>
-      </nav>
-
-      <button type="button" class="emergency-button" id="emergency-off">Stop all</button>
-    </aside>
-
-    <main class="main-panel">
-      <header class="topbar">
-        <div class="status-group">
-          <span class="status-chip warn" id="chip-zigbee">Zigbee: --</span>
-          <span class="status-chip warn" id="chip-meshtastic">LoRa Meshtastic: --</span>
-          <span class="status-chip warn" id="chip-outputs">Buzzer/LED: --</span>
-        </div>
-        <div class="topbar-right">
-          <button type="button" class="mode-toggle" id="mode-toggle" aria-label="Switch mode">
-            <span class="mode-dot"></span>
-            <span id="mode-toggle-label">SIMULATION</span>
-          </button>
-          <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch theme">🌙</button>
-          <span class="clock" id="clock">--:--</span>
-        </div>
-      </header>
-
-      {% block content %}{% endblock content %}
-    </main>
-  </div>
-
-  <div id="toast-container" class="toast-container" aria-live="polite"></div>
-
-  <script src="{% static 'web/js/state.js' %}"></script>
-  <script src="{% static 'web/js/alert.js' %}"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const root = document.documentElement;
-      const sidebar = document.getElementById('app-sidebar');
-      const sidebarToggle = document.getElementById('sidebar-toggle');
-      const currentPath = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
-      document.querySelectorAll('.nav-item').forEach((link) => {
-        const hrefPath = (link.getAttribute('href') || '/').replace(/\/+$/, '') || '/';
-        const isActive = hrefPath === currentPath || (currentPath === '/' && hrefPath === '/');
-        link.classList.toggle('active', isActive);
-        if (isActive) {
-          link.setAttribute('aria-current', 'page');
-        } else {
-          link.removeAttribute('aria-current');
-        }
-      });
-
-      const syncSidebarToggleState = () => {
-        if (!sidebarToggle) {
-          return;
-        }
-        const isCollapsed = root.classList.contains('sidebar-collapsed');
-        sidebarToggle.setAttribute('aria-expanded', String(!isCollapsed));
-      };
-
-      const applyInitialSidebar = () => {
-        if (!sidebar) {
-          return;
-        }
-        const viewportSmall = window.innerWidth <= 1180;
-        let collapsed = viewportSmall;
-        try {
-          const saved = window.localStorage.getItem('proximity-sidebar-collapsed');
-          if (saved !== null) {
-            collapsed = saved === '1';
-          }
-        } catch (error) {
-          console.warn('Sidebar state unavailable:', error);
-        }
-        root.classList.toggle('sidebar-collapsed', collapsed);
-        syncSidebarToggleState();
-      };
-
-      if (sidebarToggle) {
-        sidebarToggle.addEventListener('click', () => {
-          root.classList.toggle('sidebar-collapsed');
-          const collapsed = root.classList.contains('sidebar-collapsed');
-          try {
-            window.localStorage.setItem('proximity-sidebar-collapsed', collapsed ? '1' : '0');
-          } catch (error) {
-            console.warn('Sidebar state unavailable:', error);
-          }
-          syncSidebarToggleState();
-        });
-      }
-
-      window.addEventListener('resize', () => {
-        if (window.innerWidth <= 1180) {
-          root.classList.add('sidebar-collapsed');
-          syncSidebarToggleState();
-        }
-      });
-
-      if (sidebar) {
-        sidebar.addEventListener('pointerup', () => {
-          sidebar.querySelectorAll('.nav-item').forEach((link) => link.blur());
-        });
-      }
-
-      document.querySelectorAll('.nav-item').forEach((link) => {
-        link.addEventListener('click', () => {
-          if (window.innerWidth <= 900) {
-            root.classList.add('sidebar-collapsed');
-            syncSidebarToggleState();
-          }
-        });
-      });
-
-      applyInitialSidebar();
-      syncSidebarToggleState();
-      document.querySelectorAll('.nav-item').forEach((link) => {
-        link.addEventListener('pointerup', () => {
-          link.blur();
-        });
-      });
-    });
-  </script>
-  {% block scripts %}{% endblock scripts %}
+<body data-page="{{ page }}">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">P</span> Proximity and Impact Warning</div>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="{% url 'web:index' %}" data-nav="dashboard">Dashboard</a>
+      <a href="{% url 'web:devices' %}" data-nav="devices">Devices</a>
+      <a href="{% url 'web:simulation' %}" data-nav="simulation">Simulation</a>
+      <a href="{% url 'web:tests' %}" data-nav="tests">Tests</a>
+    </nav>
+    <div class="chips">
+      <span class="badge badge-sim" id="badge-sim" hidden>SIMULATION</span>
+      <span class="chip" id="chip-mesh">LoRa Meshtastic: --</span>
+      <span class="chip" id="chip-zigbee">Zigbee: --</span>
+      <button type="button" class="btn btn-stop" id="stop-all">Stop all</button>
+    </div>
+  </header>
+  <main class="content">{% block content %}{% endblock %}</main>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="{% static 'web/js/app.js' %}"></script>
+  {% block scripts %}{% endblock %}
 </body>
-
 </html>

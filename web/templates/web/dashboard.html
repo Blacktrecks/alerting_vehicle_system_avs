@@ -1,107 +1,50 @@
 {% extends 'web/base.html' %}
 {% load static %}
-
-{% block title %}Dashboard | Proximity Warning{% endblock %}
-
+{% block title %}Dashboard | Proximity and Impact Warning{% endblock %}
 {% block content %}
-<div class="dashboard-grid">
-  <section class="panel hero-panel">
-    <div class="hero-copy">
-      <div class="eyebrow">Driver dashboard</div>
-      <h1>Proximity and impact warning</h1>
-      <p>Warning only: the system never controls brakes or engine.</p>
-    </div>
-    <div class="hero-status">
-      <div class="big-stat">
-        <span class="label">Mode</span>
-        <strong id="mode-value">--</strong>
-      </div>
-    </div>
-  </section>
+<section class="grid">
+  <article class="card card-distance">
+    <h2>Distance</h2>
+    <div class="distance"><span id="distance">--</span><small> cm</small></div>
+    <div class="note" id="fault" hidden>SENSOR FAULT: no valid echo</div>
+  </article>
 
-  <aside class="panel side-panel">
-    <div class="panel-header">
-      <h2>Alert</h2>
-      <span id="alert-state" class="pill-text neutral">Clear</span>
+  <article class="card">
+    <h2>Alert level</h2>
+    <div class="levels" id="levels" aria-label="Alert level">
+      <span data-level="0">0 Clear</span><span data-level="1">1 Caution</span>
+      <span data-level="2">2 Warning</span><span data-level="3">3 Danger</span>
     </div>
-    <div class="mini-metrics">
-      <div>
-        <span>Source</span>
-        <strong id="source-value">--</strong>
-      </div>
-      <div>
-        <span>Type</span>
-        <strong id="type-value">--</strong>
-      </div>
-      <div>
-        <span>Expires</span>
-        <strong id="expires-value">-- s</strong>
-      </div>
-    </div>
-  </aside>
+  </article>
 
-  <section class="panel alert-panel hidden" id="alert-panel">
-    <div class="alert-banner">
-      <div>
-        <span class="alert-kicker">WARNING</span>
-        <h3 id="alert-message">Remote alert</h3>
-      </div>
-      <button type="button" class="alert-confirm" id="alert-confirm">Acknowledge</button>
+  <article class="card">
+    <h2>Outputs</h2>
+    <div class="indicators">
+      <div class="ind" id="ind-buzzer"><i></i>Buzzer</div>
+      <div class="ind" id="ind-led"><i></i>LED</div>
+      <div class="ind ind-impact" id="ind-impact"><i></i>Impact</div>
     </div>
-  </section>
+  </article>
 
-  <section class="panel utility-panel">
-    <div class="panel-header">
-      <h2>Outputs and links</h2>
-    </div>
-    <div class="utility-grid">
-      <div class="utility-card">
-        <span>Buzzer</span>
-        <strong id="buzzer-value">--</strong>
-      </div>
-      <div class="utility-card">
-        <span>LED</span>
-        <strong id="led-value">--</strong>
-      </div>
-      <div class="utility-card">
-        <span>Zigbee</span>
-        <strong id="zigbee-value">--</strong>
-      </div>
-      <div class="utility-card">
-        <span>LoRa Meshtastic</span>
-        <strong id="meshtastic-value">--</strong>
-      </div>
-    </div>
-  </section>
+  <article class="card">
+    <h2>Radios</h2>
+    <div class="radio"><b>LoRa Meshtastic</b> <span class="badge" id="mesh-state">--</span>
+      <span class="badge badge-sim" id="mesh-sim" hidden>SIMULATED</span>
+      <div class="small" id="mesh-stats"></div></div>
+    <div class="radio"><b>Zigbee</b> <span class="badge" id="zigbee-state">--</span>
+      <span class="badge badge-sim" id="zigbee-sim" hidden>SIMULATED</span>
+      <div class="small" id="zigbee-stats"></div></div>
+  </article>
 
-  <section class="panel table-panel">
-    <div class="panel-header">
-      <h2>Pin mapping</h2>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Pin</th>
-          <th>Signal type</th>
-          <th>Signal name</th>
-          <th>Definition</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for pin in pins %}
-        <tr>
-          <td>{{ pin.pin }}</td>
-          <td>{{ pin.signal_type }}</td>
-          <td>{{ pin.signal_name }}</td>
-          <td>{{ pin.definition }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-</div>
+  <article class="card">
+    <h2>Last remote alert</h2>
+    <div id="remote" class="remote">None received</div>
+  </article>
+
+  <article class="card card-wide">
+    <h2>Event log</h2>
+    <ul class="log" id="events"></ul>
+  </article>
+</section>
 {% endblock %}
-
-{% block scripts %}
-{{ state|json_script:"state-data" }}
-{% endblock scripts %}
+{% block scripts %}<script src="{% static 'web/js/dashboard.js' %}"></script>{% endblock %}

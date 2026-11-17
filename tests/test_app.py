@@ -429,5 +429,60 @@ class ShutdownTests(_NodeTestCase):
         self.assertTrue(node.NODE_bAlertActive())
 
 
+class PulseAndStatusTests(_NodeTestCase):
+    def test_pulse_switches_the_output_from_the_runtime_step_and_expires(self):
+        self.assertTrue(node.NODE_bRequestPulse("buzzer", 500, now_ms=0))
+        node.NODE_vStep(100)
+        self.assertEqual(self.pins(), (1, 0))
+        node.NODE_vStep(499)
+        self.assertEqual(self.pins(), (1, 0))
+        node.NODE_vStep(500)
+        self.assertEqual(self.pins(), (0, 0))
+
+    def test_led_pulse_is_independent_of_the_buzzer(self):
+        self.assertTrue(node.NODE_bRequestPulse("led", 300, now_ms=0))
+        node.NODE_vStep(100)
+        self.assertEqual(self.pins(), (0, 1))
+
+    def test_invalid_pulse_requests_are_refused(self):
+        for output, duration in (("motor", 100), ("buzzer", 0), ("buzzer", 2001), ("led", -1),
+                                 ("led", 1.5), ("led", True), ("buzzer", None)):
+            self.assertFalse(node.NODE_bRequestPulse(output, duration, now_ms=0), (output, duration))
+        node.NODE_vStep(100)
+        self.assertEqual(self.pins(), (0, 0))
+
+    def test_pulse_is_refused_while_an_alert_is_active_and_dropped_if_one_starts(self):
+        self.assertTrue(node.NODE_bRequestPulse("led", 2000, now_ms=0))
+        ultrasonic.US_vSimSetDistanceCm(60)
+        for t in range(0, 400, 100):
+            node.NODE_vStep(t)
+        self.assertTrue(node.NODE_bAlertActive())
+        self.assertFalse(node.NODE_bRequestPulse("buzzer", 500, now_ms=400))
+        self.assertEqual(node._runtime.pulses, {})
+
+    def test_clear_pulses_forces_outputs_off(self):
+        node.NODE_bRequestPulse("buzzer", 2000, now_ms=0)
+        node.NODE_vStep(100)
+        node.NODE_vClearPulses()
+        self.assertEqual(self.pins(), (0, 0))
+
+    def test_remote_alert_stops_counting_as_active_after_five_seconds(self):
+        m = alr.AlertManager()
+        m.on_remote(0, {"node": 1, "kind": 1, "level": 2, "distance_cm": 40, "seq": 1}, "mesh")
+        m.update(100, 0, 0, 300)
+        self.assertTrue(m.active)
+        m.update(5000, 0, 0, 300)
+        self.assertFalse(m.active)
+
+    def test_status_reports_edges_and_live_counters(self):
+        pcs.PCS_vSimInjectEdges(config.GPIO_VIB[0], 2)
+        node.NODE_vStep(0)
+        status = node.NODE_tGetStatus()
+        self.assertEqual(status["vibration_edges_total"], 2)
+        self.assertEqual(status["impacts_total"], 0)
+        self.assertEqual(status["counters"]["samples"], 1)
+        self.assertEqual(status["steps"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

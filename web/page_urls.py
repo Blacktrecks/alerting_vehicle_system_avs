@@ -1,12 +1,12 @@
 from django.urls import path
 
-from . import pages
+from . import views
 
 app_name = "web"
 
 urlpatterns = [
-    path("", pages.index, name="index"),
-    path("devices/", pages.page_devices, name="devices"),
-    path("simulator/", pages.page_simulator, name="simulator"),
-    path("tests/", pages.page_tests, name="tests"),
+    path("", views.page_dashboard, name="index"),
+    path("devices/", views.page_devices, name="devices"),
+    path("simulation/", views.page_simulation, name="simulation"),
+    path("tests/", views.page_tests, name="tests"),
 ]

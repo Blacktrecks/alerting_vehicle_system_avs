@@ -33,6 +33,7 @@ class AlertManager:
         self._remote_level = 0
         self.last_remote = None
         self._last_tx = dict.fromkeys(ALR_TX_PERIOD_MS)
+        self._now_ms = 0
 
     def on_remote(self, now_ms, alert, radio):
         """Register a valid alert received from another node over ``radio``."""
@@ -54,6 +55,7 @@ class AlertManager:
 
     def update(self, now_ms, level, impact, distance_cm):
         """Compute outputs. Returns ``{"buzzer", "led", "send": [(radio, kind, level, distance_cm)]}``."""
+        self._now_ms = now_ms
         if level != self._level:
             self._level, self._level_since = level, now_ms
         if impact and not self._impact_prev:
@@ -86,7 +88,7 @@ class AlertManager:
 
     @property
     def active(self):
-        return bool(self._level >= 1 or self._impact_prev or self._remote_start is not None)
+        return bool(self._level >= 1 or self._impact_prev or self._now_ms < self._remote_led_until)
 
 
 _SENDERS = {"zigbee": RTE_u16SendZigbeeAlert, "mesh": RTE_u16SendMeshAlert}
@@ -98,10 +100,11 @@ def ALR_vShutdown():
     RTE_vSetLed(0)
 
 
-def ALR_vStep(manager, now_ms, level, impact, distance_cm, on_rx=None, on_tx=None):
+def ALR_vStep(manager, now_ms, level, impact, distance_cm, on_rx=None, on_tx=None, buzzer_min=0, led_min=0):
     """Poll both radios for remote alerts, apply buzzer/LED outputs, send alerts.
 
     ``on_rx(radio, alert)`` / ``on_tx(radio, kind, level)`` are optional notification hooks.
+    ``buzzer_min`` / ``led_min`` (0/1) keep an output on for a manual test pulse; they are OR-ed with the pattern.
     Returns the actions dict from ``AlertManager.update``.
     """
     for radio, getter in (("zigbee", RTE_tGetZigbeeAlert), ("mesh", RTE_tGetMeshAlert)):
@@ -114,6 +117,8 @@ def ALR_vStep(manager, now_ms, level, impact, distance_cm, on_rx=None, on_tx=Non
                 on_rx(radio, alert)
     RTE_vWriteRemoteAlertLevel(manager.remote_level(now_ms))
     actions = manager.update(now_ms, level, impact, distance_cm)
+    actions["buzzer"] |= 1 if buzzer_min else 0
+    actions["led"] |= 1 if led_min else 0
     RTE_vSetBuzzer(actions["buzzer"])
     RTE_vSetLed(actions["led"])
     for radio, kind, send_level, distance in actions["send"]:

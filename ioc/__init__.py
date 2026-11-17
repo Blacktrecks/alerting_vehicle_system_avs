@@ -71,3 +71,25 @@ def IOC_u8GetVibrationState():
         if pcs.PCS_u8GetGpio(pin) == 1:
             return 1
     return 0
+
+
+# ------------------------------------------------------------------ simulation support
+def IOC_bIsSimulated():
+    """True when the sensors and GPIO run in simulation (no real hardware behind them)."""
+    return bool(pcs.PCS_bIsSimulated())
+
+
+def IOC_vSimSetDistanceCm(distance_cm):
+    """Simulation only: set the distance returned by the ultrasonic sensor. Ignored on real hardware."""
+    if IOC_bIsSimulated():
+        ultrasonic.US_vSimSetDistanceCm(distance_cm)
+
+
+def IOC_vSimInjectVibrationEdges(count):
+    """Simulation only: add `count` edges to the first vibration input. Ignored on real hardware."""
+    if type(count) is not int or count < 0 or not IOC_bIsSimulated():
+        return
+    pins = config.vibration_pins()
+    if pins:
+        pcs.PCS_vConfigEdgeCounter(pins[0])
+        pcs.PCS_vSimInjectEdges(pins[0], count)

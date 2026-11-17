@@ -18,8 +18,6 @@ ALLOWED = {
     "sim": {"rte", "sdc"},
     "web": {"rte", "app", "sim"},
 }
-# Old web files that still import the BSW directly. They are rewritten in phase P5; remove this set then.
-LEGACY_WEB_FILES = {os.path.join("web", "pages.py"), os.path.join("web", "views.py")}
 NO_DJANGO = {"mcd", "ioc", "sdc", "sched", "rte", "app", "sim"}
 
 
@@ -50,8 +48,6 @@ class LayerRuleTests(unittest.TestCase):
         checked = 0
         for layer, allowed in ALLOWED.items():
             for path in layer_files(layer):
-                if os.path.relpath(path, ROOT) in LEGACY_WEB_FILES:
-                    continue
                 checked += 1
                 for module, line in imported_modules(path):
                     if module in PROJECT_LAYERS and module != layer and module not in allowed:

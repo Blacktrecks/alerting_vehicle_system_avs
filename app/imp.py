@@ -20,9 +20,11 @@ class IMP:
         self._events = []            # (time_ms, edge count)
         self._declared_at = None
         self.total = 0
+        self.edges_total = 0
 
     def update(self, edges, now_ms):
         """Feed the edges counted since the previous call; True only at the moment of declaration."""
+        self.edges_total += edges
         if self._declared_at is not None and now_ms - self._declared_at < IMP_LOCKOUT_MS:
             self._events.clear()
             return False
