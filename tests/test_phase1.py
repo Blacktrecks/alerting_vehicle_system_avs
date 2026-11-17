@@ -6,7 +6,7 @@ import unittest
 from app import rpt
 from ioc import IOC_CH_BUZZER, IOC_CH_LED, IOC_vSetOutputPort
 from mcd import config, pcs
-from rte import vSetAlertaSonora, vSetAlertaVizuala
+from rte import RTE_vSetBuzzer, RTE_vSetLed
 
 
 class Phase1LayerTests(unittest.TestCase):
@@ -39,22 +39,22 @@ class Phase1LayerTests(unittest.TestCase):
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 0)
 
     def test_rte_valid_values_drive_the_pins(self):
-        vSetAlertaSonora(1)
-        vSetAlertaVizuala(1)
+        RTE_vSetBuzzer(1)
+        RTE_vSetLed(1)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 1)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 1)
-        vSetAlertaSonora(0)
+        RTE_vSetBuzzer(0)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 0)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 1)
 
     def test_rte_invalid_values_leave_the_pins_unchanged(self):
-        vSetAlertaSonora(1)
+        RTE_vSetBuzzer(1)
         for bad in (2, -1, 0.6, True, None, "1"):
-            vSetAlertaSonora(bad)
+            RTE_vSetBuzzer(bad)
             self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 1, "value %r" % (bad,))
-        vSetAlertaVizuala(0)
+        RTE_vSetLed(0)
         for bad in (5, -1, None, "0"):
-            vSetAlertaVizuala(bad)
+            RTE_vSetLed(bad)
             self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 0, "value %r" % (bad,))
 
     def test_report_for_alert_and_clear(self):
