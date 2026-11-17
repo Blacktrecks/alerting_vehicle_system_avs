@@ -26,7 +26,7 @@ class DeviceRegistryTests(unittest.TestCase):
                 "label": "Heltec V3",
                 "transport": "sim",
                 "address": "sim://v3",
-                "role": "Vehicul simulat V3",
+                "role": "Simulated vehicle V3",
             })
             stored = registry.list_devices()
             self.assertEqual(len(stored), 1)
@@ -79,7 +79,7 @@ class DeviceRegistryTests(unittest.TestCase):
                 "label": "Heltec V3",
                 "transport": "sim",
                 "address": "sim://mesh-demo",
-                "role": "Vehicul simulat V3",
+                "role": "Simulated vehicle V3",
                 "state": "disconnected",
             })
             with patch.object(DeviceRegistry, "probe_device", return_value={"ok": True, "message": "Meshtastic reachable"}):
@@ -102,13 +102,13 @@ class DeviceRegistryTests(unittest.TestCase):
                 "label": "LoRa Node",
                 "transport": "sim",
                 "address": "sim://mesh-off",
-                "role": "Vehicul simulat",
+                "role": "Simulated vehicle",
                 "state": "connected",
             })
 
             disconnected = registry.disconnect_device("mesh-off")
             self.assertEqual(disconnected["device"]["state"], "disconnected")
-            self.assertIn("deconectat", disconnected["result"]["message"].lower())
+            self.assertIn("disconnected", disconnected["result"]["message"].lower())
 
     def test_profile_preview_and_apply(self):
         with tempfile.TemporaryDirectory() as temp_dir:

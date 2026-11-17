@@ -7,7 +7,6 @@ from app import rpt
 from ioc import IOC_CH_BUZZER, IOC_CH_LED, IOC_vSetOutputPort
 from mcd import config, pcs
 from rte import vSetAlertaSonora, vSetAlertaVizuala
-from sdc.packets import AlertPacket, PositionPacket, decode_packet, encode_position_packet, validate_replay
 
 
 class Phase1LayerTests(unittest.TestCase):
@@ -57,25 +56,6 @@ class Phase1LayerTests(unittest.TestCase):
         for bad in (5, -1, None, "0"):
             vSetAlertaVizuala(bad)
             self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 0, "value %r" % (bad,))
-
-    def test_position_packet_round_trip(self):
-        # NOTE: replaced by the unified alert packet in phase P2 (this test then goes away with it).
-        pkt = encode_position_packet(7, 123456789, 47.15, 27.59, 42, 90, vehicle_id="V1")
-        decoded = decode_packet(pkt)
-        self.assertEqual(decoded["seq"], 7)
-        self.assertEqual(decoded["vehicle_id"], "V1")
-        self.assertEqual(decoded["speed_kmh"], 42)
-        self.assertEqual(decoded["heading_deg"], 90)
-        # Known defect (AGENTS.md section 9, item 2), fixed in phase P2:
-        # validate_replay currently accepts only an equal seq. Kept unchanged here.
-        self.assertTrue(validate_replay(7, 7))
-        self.assertFalse(validate_replay(7, 6))
-
-    def test_alert_packet_decode(self):
-        pkt = AlertPacket(seq=9, vehicle_id="V3", alert_type="impact", distance_m=12).encode()
-        decoded = decode_packet(pkt)
-        self.assertEqual(decoded["alert_type"], "impact")
-        self.assertEqual(decoded["distance_m"], 12)
 
     def test_report_for_alert_and_clear(self):
         report = rpt.build_report({"active": True, "type": "impact", "source": "V2"}, [{"id": "V3"}])
