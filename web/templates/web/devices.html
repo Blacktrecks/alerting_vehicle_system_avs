@@ -1,0 +1,55 @@
+{% extends 'web/base.html' %}
+{% load static %}
+
+{% block title %}Devices | Proximity Warning{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+  <section class="panel page-panel">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Devices</div>
+        <h1>Device manager</h1>
+      </div>
+      <button type="button" class="btn-primary" id="scan-devices-btn">Scan devices</button>
+    </div>
+    <p class="page-subtitle">USB serial adapters (Zigbee XBee, Meshtastic boards) and Meshtastic nodes reachable over WiFi/TCP.</p>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Type</th>
+            <th>Address</th>
+            <th>Profile</th>
+            <th>State</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="device-table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="device-panels">
+      <article class="info-card device-feedback-card">
+        <div class="mini-label">Device profile</div>
+        <div class="device-preview" id="device-profile-preview">
+          Select a device and press "Preview profile".
+        </div>
+      </article>
+
+      <article class="info-card device-feedback-card">
+        <div class="mini-label">Meshtastic test feedback</div>
+        <div class="device-feedback" id="device-test-feedback">
+          Press "Test" to see the payload sent to the device.
+        </div>
+      </article>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'web/js/device-manager.js' %}"></script>
+{% endblock scripts %}

@@ -1,11 +1,11 @@
-"""test.py – testează toate driverele MCD (cerința 2 din L4).
+"""test.py: tests all MCD drivers (requirement 2 of lab L4).
 
-Rulare (din rădăcina proiectului):
-    python -m mcd.test              # doar driverele, fără Django
-    python manage.py test           # prin Django (descoperă și mcd/test.py)
+Run (from the project root):
+    MCD_SIMULATE=1 python -m mcd.test     # drivers only, no Django
+    MCD_SIMULATE=1 python manage.py test  # through Django (also discovers mcd/test.py)
 
-Testele normale forțează simularea (MCD_SIMULATE=1), deci pot rula pe orice PC
-și nu pornesc buzzerul real. Pe Raspberry Pi, pentru testul cu hardware real:
+The normal tests force simulation (MCD_SIMULATE=1), so they run on any PC and
+never switch the real buzzer on. On the Raspberry Pi, for the real hardware test:
     MCD_HW_TESTS=1 python -m mcd.test HardwareSmokeTest
 """
 import builtins
@@ -14,12 +14,12 @@ import math
 import os
 import unittest
 
-from . import config, i2c, mpu6050, pcs, tim, usb
+from . import config, pcs, tim, usb
 
 
 # ------------------------------------------------------------------ utilitare
 class FakeClock:
-    """Ceas controlabil (secunde) pentru testele TIM."""
+    """Controllable clock (seconds) for the TIM tests."""
 
     def __init__(self, t=0.0):
         self.t = t
@@ -29,12 +29,11 @@ class FakeClock:
 
 
 class _DriverTestCase(unittest.TestCase):
-    MODE = "1"          # valoarea lui MCD_SIMULATE în timpul testului
+    MODE = "1"          # value of MCD_SIMULATE during the test
 
     @staticmethod
     def _reset_drivers():
         pcs.PCS_vDeinit()
-        i2c.I2C_vDeinit()
         usb.USB_vCloseAll()
         tim.TIM_vInit()
 
@@ -110,102 +109,6 @@ class PcsTests(_DriverTestCase):
         pcs.PCS_vInit()
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 0)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 0)
-
-
-# ------------------------------------------------------------------------ I2C
-class I2cTests(_DriverTestCase):
-    def test_who_am_i(self):
-        self.assertTrue(i2c.I2C_bIsSimulated())
-        self.assertEqual(i2c.I2C_u8ReadReg(config.MPU6050_ADDR, mpu6050.REG_WHO_AM_I), 0x68)
-
-    def test_write_read_roundtrip(self):
-        i2c.I2C_vWriteReg(config.MPU6050_ADDR, mpu6050.REG_SMPLRT_DIV, 0x42)
-        self.assertEqual(i2c.I2C_u8ReadReg(config.MPU6050_ADDR, mpu6050.REG_SMPLRT_DIV), 0x42)
-
-    def test_read_only_register_unchanged(self):
-        i2c.I2C_vWriteReg(config.MPU6050_ADDR, mpu6050.REG_WHO_AM_I, 0x00)
-        self.assertEqual(i2c.I2C_u8ReadReg(config.MPU6050_ADDR, mpu6050.REG_WHO_AM_I), 0x68)
-
-    def test_block_read_length(self):
-        data = i2c.I2C_lReadBlock(config.MPU6050_ADDR, mpu6050.REG_ACCEL_XOUT_H, 6)
-        self.assertIsInstance(data, bytes)
-        self.assertEqual(len(data), 6)
-
-    def test_missing_device_raises_nack(self):
-        with self.assertRaises(i2c.I2CError):
-            i2c.I2C_u8ReadReg(0x50, 0x00)
-
-    def test_invalid_arguments_raise_value_error(self):
-        a = config.MPU6050_ADDR
-        for call in (
-            lambda: i2c.I2C_u8ReadReg(0x80, 0),
-            lambda: i2c.I2C_u8ReadReg(True, 0),
-            lambda: i2c.I2C_u8ReadReg(a, 256),
-            lambda: i2c.I2C_vWriteReg(a, 0x19, -1),
-            lambda: i2c.I2C_vWriteReg(a, 0x19, 256),
-            lambda: i2c.I2C_lReadBlock(a, 0, 0),
-            lambda: i2c.I2C_lReadBlock(a, 0, 33),
-        ):
-            with self.assertRaises(ValueError):
-                call()
-
-    def test_read_past_register_space_raises(self):
-        with self.assertRaises(i2c.I2CError):
-            i2c.I2C_lReadBlock(config.MPU6050_ADDR, 0xFE, 8)
-
-
-# -------------------------------------------------------------------- MPU6050
-class Mpu6050Tests(_DriverTestCase):
-    def test_init_wakes_and_configures(self):
-        mpu6050.MPU6050_vInit()
-        a = config.MPU6050_ADDR
-        self.assertEqual(i2c.I2C_u8ReadReg(a, mpu6050.REG_PWR_MGMT_1) & 0x40, 0)
-        self.assertEqual(i2c.I2C_u8ReadReg(a, mpu6050.REG_ACCEL_CONFIG), 0x10)   # ±8 g
-        self.assertEqual(mpu6050.MPU6050_u8ReadWhoAmI(), 0x68)
-
-    def test_rest_reading_is_one_g_on_z(self):
-        mpu6050.MPU6050_vInit()
-        ax, ay, az = mpu6050.MPU6050_tReadG()
-        self.assertAlmostEqual(ax, 0.0, delta=1e-3)
-        self.assertAlmostEqual(ay, 0.0, delta=1e-3)
-        self.assertAlmostEqual(az, 1.0, delta=1e-3)
-        self.assertAlmostEqual(mpu6050.MPU6050_fReadMagnitudeG(), 1.0, delta=1e-3)
-
-    def test_negative_values_are_signed(self):
-        mpu6050.MPU6050_vInit()
-        i2c.I2C_vSimSetAccelG(-2.0, 0.5, 1.0)
-        raw = mpu6050.MPU6050_tReadRaw()
-        self.assertEqual(raw[0], -8192)                    # -2 g la 4096 LSB/g
-        g = mpu6050.MPU6050_tReadG()
-        for got, want in zip(g, (-2.0, 0.5, 1.0)):
-            self.assertAlmostEqual(got, want, delta=1 / 4096)
-
-    def test_impact_magnitude(self):
-        mpu6050.MPU6050_vInit()
-        i2c.I2C_vSimSetAccelG(3.0, 2.0, 2.0)
-        mag = mpu6050.MPU6050_fReadMagnitudeG()
-        self.assertAlmostEqual(mag, math.sqrt(17), delta=0.01)
-        self.assertGreater(mag, 2.5)
-
-    def test_saturates_at_range_limit(self):
-        mpu6050.MPU6050_vInit()
-        i2c.I2C_vSimSetAccelG(20.0, 0.0, 0.0)
-        self.assertAlmostEqual(mpu6050.MPU6050_tReadG()[0], 8.0, delta=0.01)
-
-    def test_other_range(self):
-        i2c.I2C_vSimSetAccelG(1.5, 0.0, 0.0)
-        mpu6050.MPU6050_vInit(mpu6050.RANGE_2G)
-        self.assertAlmostEqual(mpu6050.MPU6050_tReadG()[0], 1.5, delta=1 / 16384)
-
-    def test_invalid_range(self):
-        with self.assertRaises(ValueError):
-            mpu6050.MPU6050_vInit(7)
-
-    def test_wrong_who_am_i_rejected(self):
-        i2c.I2C_vInit()
-        i2c._sim_devices[config.MPU6050_ADDR].regs[0x75] = 0x70
-        with self.assertRaises(i2c.I2CError):
-            mpu6050.MPU6050_vInit()
 
 
 # ------------------------------------------------------------------------ USB
@@ -360,28 +263,30 @@ class TimTests(_DriverTestCase):
         self.assertGreaterEqual(tim.TIM_u32GetMs() - a, 4)
 
 
-# ---------------------------------------------- lanț complet: impact -> alertă
+# ----------------------------------------------- full chain: alert -> outputs
 class AlertChainTests(_DriverTestCase):
-    """Accelerometru -> buzzer + LED -> oprire la expirarea alertei (TIM)."""
+    """Buzzer + LED switched on by an alert and switched off when the alert timer expires (TIM)."""
 
-    def test_impact_triggers_alert_and_expires(self):
+    def test_alert_outputs_turn_on_and_expire(self):
         clk = FakeClock(0.0)
         tim.TIM_vSetClock(clk)
-        mpu6050.MPU6050_vInit()
-        self.assertLess(mpu6050.MPU6050_fReadMagnitudeG(), 2.5)      # repaus: fără alertă
+        self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 0)   # at rest: no alert
+        self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 0)
 
-        i2c.I2C_vSimSetAccelG(3.0, 2.0, 2.0)                          # impact simulat
-        if mpu6050.MPU6050_fReadMagnitudeG() > 2.5:
-            pcs.PCS_vSetOutputGpio(config.GPIO_BUZZER, pcs.PCS_PIN_ON)
-            pcs.PCS_vSetOutputGpio(config.GPIO_LED, pcs.PCS_PIN_ON)
-            tim.TIM_vStart(tim.TIM_CH_ALERT, 5000, tim.TIM_MODE_ONESHOT)
+        pcs.PCS_vSetOutputGpio(config.GPIO_BUZZER, pcs.PCS_PIN_ON)    # alert raised
+        pcs.PCS_vSetOutputGpio(config.GPIO_LED, pcs.PCS_PIN_ON)
+        tim.TIM_vStart(tim.TIM_CH_ALERT, 5000, tim.TIM_MODE_ONESHOT)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 1)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 1)
 
+        clk.t = 4.9
+        self.assertFalse(tim.TIM_bHasElapsed(tim.TIM_CH_ALERT))
+        self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 1)
+
         clk.t = 5.0
-        if tim.TIM_bHasElapsed(tim.TIM_CH_ALERT):
-            pcs.PCS_vSetOutputGpio(config.GPIO_BUZZER, pcs.PCS_PIN_OFF)
-            pcs.PCS_vSetOutputGpio(config.GPIO_LED, pcs.PCS_PIN_OFF)
+        self.assertTrue(tim.TIM_bHasElapsed(tim.TIM_CH_ALERT))
+        pcs.PCS_vSetOutputGpio(config.GPIO_BUZZER, pcs.PCS_PIN_OFF)
+        pcs.PCS_vSetOutputGpio(config.GPIO_LED, pcs.PCS_PIN_OFF)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_BUZZER), 0)
         self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 0)
 
@@ -488,9 +393,9 @@ class PcsChipSelectionTests(unittest.TestCase):
                 os.environ["MCD_GPIOCHIP"] = old
 
 
-# -------------------------------------------------- hardware real (Raspberry Pi)
+# ------------------------------------------------ real hardware (Raspberry Pi)
 @unittest.skipUnless(os.environ.get("MCD_HW_TESTS") == "1",
-                     "test hardware: setează MCD_HW_TESTS=1 pe Raspberry Pi")
+                     "hardware test: set MCD_HW_TESTS=1 on the Raspberry Pi")
 class HardwareSmokeTest(_DriverTestCase):
     MODE = "0"
 
@@ -501,11 +406,6 @@ class HardwareSmokeTest(_DriverTestCase):
             pcs.PCS_vSetOutputGpio(pin, 0)
         self.assertFalse(pcs.PCS_bIsSimulated())
 
-    def test_mpu6050_present(self):
-        mpu6050.MPU6050_vInit()
-        self.assertFalse(i2c.I2C_bIsSimulated())
-        self.assertAlmostEqual(mpu6050.MPU6050_fReadMagnitudeG(), 1.0, delta=0.3)
-
     def test_usb_ports(self):
         found = 0
         for ch in config.usb_channels():
@@ -515,15 +415,15 @@ class HardwareSmokeTest(_DriverTestCase):
             self.assertFalse(usb.USB_bIsSimulated(ch))
             found += 1
         if not found:
-            self.skipTest("niciun port USB conectat")
+            self.skipTest("no USB port connected")
 
 
-# ------------------------------------------------------------------- rulare
-SIM_TEST_CLASSES = (PcsTests, I2cTests, Mpu6050Tests, UsbTests, TimTests, AlertChainTests)
+# --------------------------------------------------------------------- run
+SIM_TEST_CLASSES = (PcsTests, UsbTests, TimTests, AlertChainTests)
 
 
 def build_sim_suite():
-    """Suita fără hardware (folosită și de pagina web de auto-test)."""
+    """Suite without hardware (also used by the web self-test page)."""
     loader = unittest.TestLoader()
     return unittest.TestSuite(loader.loadTestsFromTestCase(c) for c in SIM_TEST_CLASSES)
 

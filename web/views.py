@@ -1,5 +1,6 @@
 import io
 import json
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -8,12 +9,14 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
+from mcd import config as mcd_config
 from mcd import test as driver_tests
 from sdc.registry import DeviceRegistry
 from .service import StateService
 
 SERVICE = StateService()
 REGISTRY = DeviceRegistry()
+_selftest_lock = threading.Lock()
 BASE_DIR = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = BASE_DIR / "scenarios"
 REPORT_DIR = BASE_DIR / "data" / "reports"
@@ -23,23 +26,23 @@ def _read_json_body(request):
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError as exc:
-        raise ValueError("JSON invalid") from exc
+        raise ValueError("invalid JSON") from exc
     if not isinstance(payload, dict):
-        raise ValueError("payload invalid")
+        raise ValueError("invalid payload")
     return payload
 
 
 def _validate_scenario_steps(steps):
     allowed = {"connect", "disconnect", "send_text", "send_packet", "expect_rx", "wait", "inject", "assert"}
     if not isinstance(steps, list) or not steps:
-        raise ValueError("steps invalide: lista este obligatorie")
+        raise ValueError("invalid steps: a non-empty list is required")
     validated = []
     for index, step in enumerate(steps, start=1):
         if not isinstance(step, dict):
-            raise ValueError(f"step {index}: obiect invalid")
+            raise ValueError(f"step {index}: invalid object")
         op = str(step.get("op") or "").strip().lower()
         if op not in allowed:
-            raise ValueError(f"step {index}: op nepermis ({op})")
+            raise ValueError(f"step {index}: operation not allowed ({op})")
         validated.append(step)
     return validated
 
@@ -67,7 +70,7 @@ def api_outputs(request):
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON invalid"}, status=400)
+        return JsonResponse({"error": "invalid JSON"}, status=400)
     channel = payload.get("channel")
     value = payload.get("value")
     duration_ms = payload.get("duration_ms")
@@ -98,7 +101,7 @@ def api_mode(request):
     try:
         payload = json.loads(request.body or b"{}") if request.body else {}
     except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON invalid"}, status=400)
+        return JsonResponse({"error": "invalid JSON"}, status=400)
     mode = payload.get("mode") or request.POST.get("mode") or "simulation"
     try:
         SERVICE.set_mode(mode)
@@ -121,7 +124,7 @@ def api_sim_action(request, action=None):
     elif action == "inject":
         SERVICE.inject_impact()
     else:
-        return JsonResponse({"error": "acțiune invalidă"}, status=400)
+        return JsonResponse({"error": "invalid action"}, status=400)
     return JsonResponse({"ok": True, "state": SERVICE.snapshot()})
 
 
@@ -160,9 +163,9 @@ def api_devices(request):
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON invalid"}, status=400)
+        return JsonResponse({"error": "invalid JSON"}, status=400)
     if not isinstance(payload, dict):
-        return JsonResponse({"error": "payload invalid"}, status=400)
+        return JsonResponse({"error": "invalid payload"}, status=400)
     record = REGISTRY.add_device(payload)
     return JsonResponse({"ok": True, "device": record})
 
@@ -238,7 +241,7 @@ def api_tests(request):
     name = str(payload.get("name") or "scenario").strip()
     scenario = payload.get("scenario") or payload
     if not isinstance(scenario, dict):
-        return JsonResponse({"error": "scenario invalid"}, status=400)
+        return JsonResponse({"error": "invalid scenario"}, status=400)
     steps = scenario.get("steps")
     try:
         _validate_scenario_steps(steps)
@@ -262,13 +265,13 @@ def api_tests_run(request):
     scenario_file = str(payload.get("scenario_file") or "").strip()
     if scenario is None and scenario_file:
         if Path(scenario_file).name != scenario_file:
-            return JsonResponse({"error": "scenario_file invalid"}, status=400)
+            return JsonResponse({"error": "invalid scenario_file"}, status=400)
         path = SCENARIO_DIR / scenario_file
         if not path.exists() or path.suffix.lower() != ".json":
-            return JsonResponse({"error": "scenario_file invalid"}, status=404)
+            return JsonResponse({"error": "invalid scenario_file"}, status=404)
         scenario = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(scenario, dict):
-        return JsonResponse({"error": "scenario lipsă"}, status=400)
+        return JsonResponse({"error": "missing scenario"}, status=400)
 
     try:
         steps = _validate_scenario_steps(scenario.get("steps"))
@@ -281,7 +284,7 @@ def api_tests_run(request):
         op = str(step.get("op") or "").strip().lower()
         device_id = str(step.get("device") or step.get("from") or "").strip()
         status = "ok"
-        message = "executat"
+        message = "executed"
         extra = {}
         try:
             if op == "connect" and device_id:
@@ -293,18 +296,18 @@ def api_tests_run(request):
             elif op in {"send_text", "send_packet"} and device_id:
                 test_result = REGISTRY.send_test(device_id)
                 extra = test_result.get("result", {})
-                message = extra.get("message", "test trimis")
+                message = extra.get("message", "test sent")
             elif op == "inject":
                 SERVICE.inject_impact()
-                message = "impact injectat"
+                message = "impact injected"
             elif op == "wait":
                 duration = float(step.get("seconds") or step.get("duration_s") or 0.1)
                 time.sleep(min(max(duration, 0.05), 1.0))
-                message = f"așteptare {duration:.2f}s"
+                message = f"waited {duration:.2f}s"
             elif op in {"expect_rx", "assert"}:
-                message = "validare simulată: OK"
+                message = "simulated check: OK"
             else:
-                message = "step fără acțiune"
+                message = "step has no action"
         except Exception as exc:  # pragma: no cover - runtime variability
             status = "failed"
             message = str(exc)
@@ -325,12 +328,22 @@ def api_tests_run(request):
     return JsonResponse({"ok": report["ok"], "report": report_name, "result": report})
 
 
+@require_GET
+def api_pins(request):
+    return JsonResponse({"pins": mcd_config.PIN_TABLE})
+
+
+@csrf_protect
 @require_POST
 def api_selftest(request):
-    if not getattr(request, "body", b""):
-        pass
-    stream = io.StringIO()
-    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(driver_tests.build_sim_suite())
+    """Run the driver tests in simulation (never touches the real hardware)."""
+    if not _selftest_lock.acquire(blocking=False):
+        return JsonResponse({"error": "the self-test is already running"}, status=409)
+    try:
+        stream = io.StringIO()
+        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(driver_tests.build_sim_suite())
+    finally:
+        _selftest_lock.release()
     payload = {
         "ok": result.wasSuccessful(),
         "tests_run": result.testsRun,
@@ -340,7 +353,7 @@ def api_selftest(request):
         "log": stream.getvalue(),
     }
     if result.wasSuccessful():
-        SERVICE.logger.info("Self-test passed", **payload)
+        SERVICE.logger.info("Self-test passed", tests_run=payload["tests_run"])
     else:
-        SERVICE.logger.warning("Self-test failed", **payload)
+        SERVICE.logger.warning("Self-test failed", failures=payload["failures"], errors=payload["errors"])
     return JsonResponse(payload)

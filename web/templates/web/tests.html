@@ -1,0 +1,28 @@
+{% extends 'web/base.html' %}
+{% load static %}
+
+{% block title %}Tests | Proximity Warning{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+  <section class="panel page-panel">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Tests</div>
+        <h1>Driver self-test</h1>
+      </div>
+      <span class="badge badge-sim">SIMULATION</span>
+    </div>
+    <p class="page-subtitle">Runs the MCD driver tests in simulation. It never touches the real hardware.</p>
+
+    <div class="chip-actions">
+      <button type="button" class="btn-primary" data-api-post="/api/selftest/" data-show-log="1">Run self-test</button>
+    </div>
+    <pre class="device-feedback" id="action-result">Not run yet.</pre>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'web/js/actions.js' %}"></script>
+{% endblock scripts %}

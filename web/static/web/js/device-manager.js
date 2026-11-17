@@ -25,10 +25,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const humanState = (device) => {
     const state = String(device.state || 'available').toLowerCase();
-    if (state.includes('connected')) return 'Conectat';
-    if (state.includes('disconnected')) return 'Deconectat';
-    if (state.includes('error')) return 'Eroare';
-    return 'Disponibil';
+    if (state.includes('connected')) return 'Connected';
+    if (state.includes('disconnected')) return 'Disconnected';
+    if (state.includes('error')) return 'Error';
+    return 'Available';
   };
 
   const renderRows = (devices = []) => {
@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!devices.length) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="6">Niciun dispozitiv găsit. Conectează un adaptor Zigbee sau un modul Meshtastic și apasă pe Scanare dispozitive.</td>
+          <td colspan="6">No device found. Plug in a Zigbee adapter or a Meshtastic board and press Scan devices.</td>
         </tr>
       `;
       return;
@@ -62,11 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
           <td><span class="status-chip ${statusClass(state)}">${status}</span></td>
           <td>
             <div class="chip-actions">
-              <button type="button" data-device-id="${id}" data-device-action="connect">Conectează</button>
-              <button type="button" data-device-id="${id}" data-device-action="disconnect">Deconectează</button>
+              <button type="button" data-device-id="${id}" data-device-action="connect">Connect</button>
+              <button type="button" data-device-id="${id}" data-device-action="disconnect">Disconnect</button>
               <button type="button" data-device-id="${id}" data-device-action="send-test">Test</button>
-              <button type="button" data-device-id="${id}" data-device-action="profile-preview">Preview profil</button>
-              <button type="button" data-device-id="${id}" data-device-action="apply-profile">Aplică profil</button>
+              <button type="button" data-device-id="${id}" data-device-action="profile-preview">Preview profile</button>
+              <button type="button" data-device-id="${id}" data-device-action="apply-profile">Apply profile</button>
             </div>
           </td>
         </tr>
@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const renderProfilePreview = (preview) => {
     if (!profilePreviewEl) return;
     if (!preview) {
-      profilePreviewEl.textContent = 'Nu există date de profil.';
+      profilePreviewEl.textContent = 'No profile data.';
       return;
     }
     const diff = preview.diff || {};
@@ -98,9 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
     profilePreviewEl.innerHTML = `
       <div><strong>Device:</strong> ${escapeHtml(preview.device_id || '-')}</div>
-      <div><strong>Compatibil:</strong> ${preview.compatible ? 'Da' : 'Nu'}</div>
-      <div><strong>Țintă:</strong> ${escapeHtml((preview.target || {}).region || '-')}/${escapeHtml((preview.target || {}).preset || '-')}/${escapeHtml((preview.target || {}).channel_name || '-')}</div>
-      ${rows || '<div>Nu există diferențe. Profilul este deja sincronizat.</div>'}
+      <div><strong>Compatible:</strong> ${preview.compatible ? 'Yes' : 'No'}</div>
+      <div><strong>Target:</strong> ${escapeHtml((preview.target || {}).region || '-')}/${escapeHtml((preview.target || {}).preset || '-')}/${escapeHtml((preview.target || {}).channel_name || '-')}</div>
+      ${rows || '<div>No differences. The profile is already in sync.</div>'}
     `;
   };
 
@@ -110,10 +110,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const preview = payload && payload.preview ? payload.preview : {};
     const ts = new Date().toLocaleTimeString();
     testFeedbackEl.innerHTML = `
-      <div><strong>Acțiune:</strong> ${escapeHtml(action)}</div>
-      <div><strong>Ora:</strong> ${escapeHtml(ts)}</div>
-      <div><strong>Mesaj:</strong> ${escapeHtml(result.message || payload.message || 'Acțiune executată')}</div>
-      ${preview.node ? `<div><strong>Nod:</strong> ${escapeHtml(preview.node)}</div>` : ''}
+      <div><strong>Action:</strong> ${escapeHtml(action)}</div>
+      <div><strong>Time:</strong> ${escapeHtml(ts)}</div>
+      <div><strong>Message:</strong> ${escapeHtml(result.message || payload.message || 'Action executed')}</div>
+      ${preview.node ? `<div><strong>Node:</strong> ${escapeHtml(preview.node)}</div>` : ''}
       ${preview.payload ? `<div><strong>Payload:</strong> ${escapeHtml(preview.payload)}</div>` : ''}
     `;
   };
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      window.alert(payload.error || 'Nu s-a putut încărca preview-ul profilului.');
+      window.alert(payload.error || 'Could not load the profile preview.');
       return;
     }
     renderProfilePreview(payload.preview);
@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.alert(payload.result.message);
       }
     } else {
-      window.alert(payload.error || 'Acțiunea a eșuat.');
+      window.alert(payload.error || 'The action failed.');
     }
   };
 

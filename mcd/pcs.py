@@ -1,8 +1,8 @@
-"""Driver PCS – ieșiri/intrări digitale GPIO (Raspberry Pi 5, bibliotecă lgpio).
+"""PCS driver: digital GPIO outputs/inputs (Raspberry Pi, lgpio library).
 
-Corespunde funcției PCS_vSetOutputGpio din L3: parametrii invalizi sunt
-ignorați, astfel încât o comandă eronată nu modifică starea ieșirilor.
-Fără lgpio sau fără /dev/gpiochip* driverul rulează în simulare.
+Implements PCS_vSetOutputGpio from lab L3: invalid parameters are ignored,
+so a wrong command never changes the state of the outputs.
+Without lgpio or without /dev/gpiochip* the driver runs in simulation.
 """
 import glob
 import os
@@ -12,19 +12,19 @@ from . import config
 
 try:
     import lgpio
-except ImportError:          # PC de dezvoltare
+except ImportError:          # development PC
     lgpio = None
 
 PCS_PIN_OFF = 0
 PCS_PIN_ON = 1
-PCS_PIN_INVALID = 0xFF       # valoare returnată pentru pin invalid
+PCS_PIN_INVALID = 0xFF       # value returned for an invalid pin
 
 _lock = threading.RLock()
 _initialized = False
 _simulated = True
 _handle = None
 _direction = {}              # pin -> "out" | "in"
-_level = {}                  # pin -> nivel (cache ieșiri / valori simulate)
+_level = {}                  # pin -> level (output cache / simulated values)
 
 
 def _hw_available():
@@ -44,7 +44,7 @@ TARGET_GPIO_LABELS = {"pinctrl-rp1", "pinctrl-bcm2711"}
 
 
 def _parse_chip_label(value):
-    """Extrage eticheta unui chip din structuri variate returnate de lgpio."""
+    """Extract a chip label from the various structures returned by lgpio."""
     if value is None:
         return None
     if isinstance(value, dict):
@@ -74,7 +74,7 @@ def _parse_chip_label(value):
 
 
 def _read_chip_label(chip_id):
-    """Încercă să citească eticheta chip-ului din lgpio sau din sysfs."""
+    """Try to read the chip label from lgpio or from sysfs."""
     if lgpio is not None:
         for attempt in (
             lambda cid: lgpio.gpio_get_chip_info(cid),
@@ -98,7 +98,7 @@ def _read_chip_label(chip_id):
 
 
 def _resolve_gpiochip():
-    """Returnează numărul chip-ului GPIO cu eticheta Pi 4/5 corectă."""
+    """Return the number of the GPIO chip with the correct Pi 4/5 label."""
     env_value = os.environ.get("MCD_GPIOCHIP", "").strip()
     if env_value:
         raw = env_value.lower()
@@ -159,11 +159,11 @@ def _open_chip():
             return lgpio.gpiochip_open(chip)
         except Exception as exc:     # lgpio.error
             last = exc
-    raise RuntimeError("nu pot deschide gpiochip: %s" % (last,))
+    raise RuntimeError("cannot open gpiochip: %s" % (last,))
 
 
 def _configure(pin, direction):
-    """Configurează direcția unui pin (apelat cu _lock luat)."""
+    """Configure the direction of a pin (called with _lock held)."""
     if _direction.get(pin) == direction:
         return
     if not _simulated:
@@ -179,7 +179,7 @@ def _configure(pin, direction):
 
 
 def PCS_vInit():
-    """Inițializează driverul; ieșirile de alertă pornesc oprite."""
+    """Initialize the driver; the alert outputs start switched off."""
     global _initialized, _simulated, _handle
     with _lock:
         if _initialized:
@@ -187,7 +187,7 @@ def PCS_vInit():
         _simulated = config.use_simulation(_hw_available())
         if not _simulated:
             if lgpio is None:
-                raise RuntimeError("lgpio nu este instalat (pip install lgpio)")
+                raise RuntimeError("lgpio is not installed (pip install lgpio)")
             _handle = _open_chip()
         _initialized = True
         for pin in config.OUTPUT_PINS:
@@ -195,7 +195,7 @@ def PCS_vInit():
 
 
 def PCS_vDeinit():
-    """Oprește ieșirile, eliberează pinii și resetează starea driverului."""
+    """Switch the outputs off, release the pins and reset the driver state."""
     global _initialized, _simulated, _handle
     with _lock:
         if _initialized and not _simulated:
@@ -219,7 +219,7 @@ def PCS_bIsSimulated():
 
 
 def PCS_vConfigInput(u8Pin):
-    """Configurează un pin ca intrare digitală (pin invalid: ignorat)."""
+    """Configure a pin as a digital input (invalid pin: ignored)."""
     if not _is_valid_pin(u8Pin):
         return
     with _lock:
@@ -228,7 +228,7 @@ def PCS_vConfigInput(u8Pin):
 
 
 def PCS_vSetOutputGpio(u8Pin, value):
-    """Setează nivelul unui pin de ieșire. Parametri invalizi: ignorați."""
+    """Set the level of an output pin. Invalid parameters are ignored."""
     if not _is_valid_pin(u8Pin) or not _is_valid_level(value):
         return
     with _lock:
@@ -240,7 +240,7 @@ def PCS_vSetOutputGpio(u8Pin, value):
 
 
 def PCS_u8GetGpio(u8Pin):
-    """Citește nivelul unui pin; PCS_PIN_INVALID (0xFF) pentru pin invalid."""
+    """Read the level of a pin; PCS_PIN_INVALID (0xFF) for an invalid pin."""
     if not _is_valid_pin(u8Pin):
         return PCS_PIN_INVALID
     with _lock:
@@ -255,13 +255,13 @@ def PCS_u8GetGpio(u8Pin):
 
 
 def PCS_vSimSetInput(u8Pin, value):
-    """Doar în simulare: impune nivelul unui pin de intrare (pentru teste)."""
+    """Simulation only: force the level of an input pin (for tests)."""
     if not _is_valid_pin(u8Pin) or not _is_valid_level(value):
         return
     with _lock:
         PCS_vInit()
         if not _simulated:
-            raise RuntimeError("PCS_vSimSetInput este disponibil doar în simulare")
+            raise RuntimeError("PCS_vSimSetInput is only available in simulation")
         if _direction.get(u8Pin) != "in":
             _configure(u8Pin, "in")
         _level[u8Pin] = int(value)

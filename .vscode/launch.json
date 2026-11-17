@@ -10,7 +10,7 @@
       "django": true
     },
     {
-      "name": "Django: teste (manage.py test)",
+      "name": "Django: tests (manage.py test)",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/manage.py",
@@ -18,7 +18,7 @@
       "django": true
     },
     {
-      "name": "Drivere: python -m mcd.test",
+      "name": "Drivers: python -m mcd.test",
       "type": "debugpy",
       "request": "launch",
       "module": "mcd.test",

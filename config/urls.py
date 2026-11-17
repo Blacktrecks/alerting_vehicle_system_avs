@@ -1,6 +1,6 @@
 from django.urls import include, path
 
 urlpatterns = [
-    path("", include("mcd.urls")),
+    path("", include("web.page_urls")),
     path("api/", include("web.urls")),
 ]

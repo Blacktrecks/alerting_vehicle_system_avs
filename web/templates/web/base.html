@@ -1,82 +1,65 @@
 {% load static %}
 <!doctype html>
-<html lang="ro" data-theme="dark">
+<html lang="en" data-theme="dark">
 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Vehicul Avertizare{% endblock %}</title>
+  <title>{% block title %}Proximity Warning{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'web/css/app.css' %}">
 </head>
 
 <body>
   <div class="app-shell">
-    <aside class="sidebar" id="app-sidebar" aria-label="Navigare principală">
-      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Comută bara laterală"
+    <aside class="sidebar" id="app-sidebar" aria-label="Main navigation">
+      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar"
         aria-expanded="false">
         <span class="sidebar-toggle-bars" aria-hidden="true"></span>
       </button>
 
       <div class="brand-block">
-        <div class="brand-mark">V</div>
+        <div class="brand-mark">P</div>
         <div>
-          <div class="brand-name">AVERTIZARE</div>
-          <div class="brand-sub">Sistem Hibrid de Avertizare Vehicule</div>
+          <div class="brand-name">PROXIMITY</div>
+          <div class="brand-sub">Proximity and Impact Warning System</div>
         </div>
       </div>
 
-      <nav class="nav" aria-label="Navigare principală">
-        <a class="nav-item" href="/" data-nav="sofer" title="Șofer">
-          <span class="nav-icon" aria-hidden="true">SD</span>
-          <span class="nav-label">Șofer</span>
+      <nav class="nav" aria-label="Main navigation">
+        <a class="nav-item" href="/" data-nav="dashboard" title="Dashboard">
+          <span class="nav-icon" aria-hidden="true">DB</span>
+          <span class="nav-label">Dashboard</span>
         </a>
-        <a class="nav-item" href="/devices/" data-nav="devices" title="Dispozitive">
+        <a class="nav-item" href="/devices/" data-nav="devices" title="Devices">
           <span class="nav-icon" aria-hidden="true">DV</span>
-          <span class="nav-label">Dispozitive</span>
+          <span class="nav-label">Devices</span>
         </a>
-        <a class="nav-item" href="/simulator/" data-nav="sim" title="Simulare">
+        <a class="nav-item" href="/simulator/" data-nav="sim" title="Simulation">
           <span class="nav-icon" aria-hidden="true">SM</span>
-          <span class="nav-label">Simulare</span>
+          <span class="nav-label">Simulation</span>
         </a>
-        <a class="nav-item" href="/tests/" data-nav="tests" title="Teste">
+        <a class="nav-item" href="/tests/" data-nav="tests" title="Tests">
           <span class="nav-icon" aria-hidden="true">TS</span>
-          <span class="nav-label">Teste</span>
-        </a>
-        <a class="nav-item" href="/stats/" data-nav="stats" title="Statistici">
-          <span class="nav-icon" aria-hidden="true">ST</span>
-          <span class="nav-label">Statistici</span>
-        </a>
-        <a class="nav-item" href="/logs/" data-nav="logs" title="Loguri">
-          <span class="nav-icon" aria-hidden="true">LG</span>
-          <span class="nav-label">Loguri</span>
-        </a>
-        <a class="nav-item" href="/diagnostics/" data-nav="diag" title="Diagnoză">
-          <span class="nav-icon" aria-hidden="true">DG</span>
-          <span class="nav-label">Diagnoză</span>
-        </a>
-        <a class="nav-item" href="/operator/" data-nav="operator" title="Centru">
-          <span class="nav-icon" aria-hidden="true">CT</span>
-          <span class="nav-label">Centru</span>
+          <span class="nav-label">Tests</span>
         </a>
       </nav>
 
-      <button type="button" class="emergency-button" id="emergency-off">Oprește tot</button>
+      <button type="button" class="emergency-button" id="emergency-off">Stop all</button>
     </aside>
 
     <main class="main-panel">
       <header class="topbar">
         <div class="status-group">
-          <span class="status-chip ok">Zigbee: OK</span>
-          <span class="status-chip ok">LoRa Meshtastic: OK</span>
-          <span class="status-chip ok">MPU6050: OK</span>
-          <span class="status-chip ok">Buzzer/LED: activ</span>
+          <span class="status-chip warn" id="chip-zigbee">Zigbee: --</span>
+          <span class="status-chip warn" id="chip-meshtastic">LoRa Meshtastic: --</span>
+          <span class="status-chip warn" id="chip-outputs">Buzzer/LED: --</span>
         </div>
         <div class="topbar-right">
-          <button type="button" class="mode-toggle" id="mode-toggle" aria-label="Comută modulul">
+          <button type="button" class="mode-toggle" id="mode-toggle" aria-label="Switch mode">
             <span class="mode-dot"></span>
-            <span id="mode-toggle-label">SIMULARE</span>
+            <span id="mode-toggle-label">SIMULATION</span>
           </button>
-          <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Comută tema">🌙</button>
+          <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch theme">🌙</button>
           <span class="clock" id="clock">--:--</span>
         </div>
       </header>
@@ -86,18 +69,9 @@
   </div>
 
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
-  <div id="confirm-dialog" class="modal hidden" aria-modal="true">
-    <div class="modal-card">
-      <h3>Confirmare</h3>
-      <p>Acțiunea este riscantă. Continui?</p>
-      <div class="modal-actions">
-        <button type="button" class="btn-ghost" data-confirm="cancel">Anulează</button>
-        <button type="button" class="btn-primary" data-confirm="ok">Confirmă</button>
-      </div>
-    </div>
-  </div>
 
   <script src="{% static 'web/js/state.js' %}"></script>
+  <script src="{% static 'web/js/alert.js' %}"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const root = document.documentElement;
@@ -130,7 +104,7 @@
         const viewportSmall = window.innerWidth <= 1180;
         let collapsed = viewportSmall;
         try {
-          const saved = window.localStorage.getItem('vehicul-sidebar-collapsed');
+          const saved = window.localStorage.getItem('proximity-sidebar-collapsed');
           if (saved !== null) {
             collapsed = saved === '1';
           }
@@ -146,7 +120,7 @@
           root.classList.toggle('sidebar-collapsed');
           const collapsed = root.classList.contains('sidebar-collapsed');
           try {
-            window.localStorage.setItem('vehicul-sidebar-collapsed', collapsed ? '1' : '0');
+            window.localStorage.setItem('proximity-sidebar-collapsed', collapsed ? '1' : '0');
           } catch (error) {
             console.warn('Sidebar state unavailable:', error);
           }

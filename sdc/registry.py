@@ -160,7 +160,7 @@ class DeviceRegistry:
     def _parse_tcp_endpoint(self, device: dict[str, Any]) -> tuple[str, int]:
         raw = str(device.get("address") or "").strip()
         if not raw:
-            raise ValueError("Adresa TCP lipsește")
+            raise ValueError("TCP address is missing")
 
         if ":" in raw:
             host, port_text = raw.rsplit(":", 1)
@@ -177,11 +177,11 @@ class DeviceRegistry:
     def _serial_probe(self, device: dict[str, Any]) -> None:
         port = str(device.get("port") or device.get("address") or "").strip()
         if not port:
-            raise ValueError("Port serial lipsă")
+            raise ValueError("Serial port is missing")
         try:
             import serial
         except Exception as exc:
-            raise RuntimeError("pyserial nu este instalat") from exc
+            raise RuntimeError("pyserial is not installed") from exc
         # Open+close validates that the serial port exists and is not busy.
         handle = serial.Serial(port=port, baudrate=115200, timeout=1)
         handle.close()
@@ -272,7 +272,7 @@ class DeviceRegistry:
                 return {"ok": True, "message": "Port serial accesibil"}
             if transport in {"tcp", "wifi", "meshtastic", "lora"}:
                 self._tcp_probe(device)
-                return {"ok": True, "message": "Conexiune TCP activă"}
+                return {"ok": True, "message": "TCP connection active"}
             return {"ok": False, "message": f"Transport necunoscut: {transport}"}
         except Exception as exc:
             return {"ok": False, "message": str(exc)}
@@ -288,7 +288,7 @@ class DeviceRegistry:
             opened = bool(link.connect())
             if opened:
                 self._active_links[device_id] = link
-                result = {"ok": True, "message": "Conectare Meshtastic activă"}
+                result = {"ok": True, "message": "Meshtastic connection active"}
             else:
                 result = self.probe_device(device)
         device["last_action"] = "connect"
@@ -329,18 +329,18 @@ class DeviceRegistry:
                 sent = link.send_text(node_id, test_text)
                 status_ok = sent > 0 or link.is_connected()
                 if status_ok:
-                    message = f"Test transmis către {node_id} prin {transport_name}: {sent} bytes (Meshtastic)."
+                    message = f"Test sent to {node_id} through {transport_name}: {sent} bytes (Meshtastic)."
                 else:
-                    message = f"Test eșuat prin {transport_name}: niciun payload nu a fost confirmat."
+                    message = f"Test failed through {transport_name}: no payload was confirmed."
                 result = {"ok": status_ok, "message": message}
                 if link.is_connected() and device_id not in self._active_links:
                     link.disconnect()
             except Exception as exc:  # pragma: no cover - hardware/network volatility
-                result = {"ok": False, "message": f"Test eșuat prin {transport_name}: {exc}"}
+                result = {"ok": False, "message": f"Test failed through {transport_name}: {exc}"}
         else:
             result = self.probe_device(device)
             if result["ok"]:
-                result["message"] = f"Test dummy rulat pentru {node_id}: payload simulat validat."
+                result["message"] = f"Dummy test run for {node_id}: simulated payload validated."
 
         device["last_action"] = "send-test"
         device["last_test"] = "ok" if result["ok"] else "failed"

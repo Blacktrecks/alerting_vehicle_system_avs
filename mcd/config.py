@@ -1,10 +1,10 @@
-"""Configurație MCD: mapare pini, canale și mod de simulare."""
+"""MCD configuration: pin mapping, channels and simulation mode."""
 import os
 
-# ---------------------------------------------------------------- simulare
-# MCD_SIMULATE = "auto" (implicit): hardware real dacă biblioteca și
-#                dispozitivul există, altfel simulare (rulare pe PC);
-#                "1": simulare forțată; "0": hardware forțat (eroare dacă lipsește).
+# --------------------------------------------------------------- simulation
+# MCD_SIMULATE = "auto" (default): real hardware if the library and the device
+#                exist, otherwise simulation (running on a PC);
+#                "1": forced simulation; "0": forced hardware (error if missing).
 SIM_ENV = "MCD_SIMULATE"
 
 
@@ -13,7 +13,7 @@ def simulation_mode():
 
 
 def use_simulation(hw_available):
-    """Decide dacă un driver rulează în simulare."""
+    """Decide whether a driver runs in simulation."""
     mode = simulation_mode()
     if mode in ("1", "true", "yes", "on"):
         return True
@@ -22,23 +22,17 @@ def use_simulation(hw_available):
     return not hw_available
 
 
-# -------------------------------------------------------------------- GPIO
+# --------------------------------------------------------------------- GPIO
 PCS_PIN_MIN = 0
-PCS_PIN_MAX = 27          # interval valid din L3 (BCM)
+PCS_PIN_MAX = 27          # valid range from L3 (BCM numbering)
 
-GPIO_I2C_SDA = 2
-GPIO_I2C_SCL = 3
-GPIO_BUZZER = 17          # buzzer prin tranzistor NPN
-GPIO_LED = 27             # LED cu rezistență de 330 ohm
+GPIO_BUZZER = 17          # buzzer through an NPN transistor
+GPIO_LED = 27             # LED with a 330 ohm resistor
 OUTPUT_PINS = (GPIO_BUZZER, GPIO_LED)
 
-# --------------------------------------------------------------------- I2C
-I2C_BUS_ID = 1            # /dev/i2c-1 pe Raspberry Pi (GPIO2/GPIO3)
-MPU6050_ADDR = 0x68       # AD0 la GND
-
 # --------------------------------------------------------------------- USB
-USB_CH_ZIGBEE = 0         # XBee3 prin adaptor USB
-USB_CH_MESHTASTIC = 1     # modul ESP Meshtastic
+USB_CH_ZIGBEE = 0         # XBee3 through a USB adapter
+USB_CH_MESHTASTIC = 1     # Meshtastic ESP module
 
 _USB_DEFAULTS = {
     USB_CH_ZIGBEE: {"name": "ZIGBEE", "port": "/dev/ttyUSB0", "baud": 9600,
@@ -53,34 +47,28 @@ def usb_channels():
 
 
 def usb_config(channel):
-    """Returnează {name, port, baud} pentru canal (portul poate fi suprascris din env)."""
+    """Return {name, port, baud} for a channel (the port can be overridden from the environment)."""
     if channel not in _USB_DEFAULTS:
-        raise ValueError("canal USB invalid: %r" % (channel,))
+        raise ValueError("invalid USB channel: %r" % (channel,))
     cfg = dict(_USB_DEFAULTS[channel])
     cfg["port"] = os.environ.get(cfg.pop("env"), cfg["port"])
     return cfg
 
 
-# ------------------------------------------------------- tabel mapare pini
-# Format cerut de L4: Pin | Tip semnal | Nume semnal | Definiție
-# Tipuri: DOP = ieșire digitală, DIP = intrare digitală, COM = comunicație,
-#         PWR = alimentare
+# ------------------------------------------------------------ pin mapping table
+# Format required by L4: Pin | Signal type | Signal name | Definition
+# Types: DOP = digital output, DIP = digital input, COM = communication,
+#        PWR = power supply
 PIN_TABLE = [
-    {"pin": "GPIO2 / SDA1 (pin 3)", "tip": "COM", "nume": "I2C_SDA",
-     "definitie": "Linie date I2C către accelerometrul MPU6050"},
-    {"pin": "GPIO3 / SCL1 (pin 5)", "tip": "COM", "nume": "I2C_SCL",
-     "definitie": "Linie ceas I2C către accelerometrul MPU6050"},
-    {"pin": "GPIO17 (pin 11)", "tip": "DOP", "nume": "BUZZER",
-     "definitie": "Alertă sonoră: rezistență 1 kΩ, bază tranzistor NPN, "
-                  "buzzer între 5 V și colector, diodă de protecție"},
-    {"pin": "GPIO27 (pin 13)", "tip": "DOP", "nume": "LED",
-     "definitie": "Alertă vizuală: LED cu rezistență de 330 Ω către GND"},
-    {"pin": "USB (hub alimentat)", "tip": "COM", "nume": "ZIGBEE",
-     "definitie": "XBee3 Zigbee prin adaptor USB, /dev/ttyUSB0, 9600 baud"},
-    {"pin": "USB (hub alimentat)", "tip": "COM", "nume": "MESHTASTIC",
-     "definitie": "Modul ESP Meshtastic (LoRa), /dev/ttyACM0, 115200 baud"},
-    {"pin": "3V3 (pin 1)", "tip": "PWR", "nume": "VCC_MPU",
-     "definitie": "Alimentare 3,3 V pentru MPU6050"},
-    {"pin": "GND (pin 6)", "tip": "PWR", "nume": "GND",
-     "definitie": "Masă comună (Pi, MPU6050, LED, tranzistor buzzer)"},
+    {"pin": "GPIO17 (pin 11)", "signal_type": "DOP", "signal_name": "BUZZER",
+     "definition": "Audible alert: 1 kOhm resistor, NPN transistor base, "
+                   "buzzer between 5 V and collector, protection diode"},
+    {"pin": "GPIO27 (pin 13)", "signal_type": "DOP", "signal_name": "LED",
+     "definition": "Visual alert: LED with a 330 Ohm resistor to GND"},
+    {"pin": "USB (powered hub)", "signal_type": "COM", "signal_name": "ZIGBEE",
+     "definition": "XBee3 Zigbee through a USB adapter, /dev/ttyUSB0, 9600 baud"},
+    {"pin": "USB (powered hub)", "signal_type": "COM", "signal_name": "MESHTASTIC",
+     "definition": "Meshtastic (LoRa) ESP module, /dev/ttyACM0, 115200 baud"},
+    {"pin": "GND (pin 6)", "signal_type": "PWR", "signal_name": "GND",
+     "definition": "Common ground (Pi, LED, buzzer transistor)"},
 ]

@@ -1,0 +1,31 @@
+{% extends 'web/base.html' %}
+{% load static %}
+
+{% block title %}Simulation | Proximity Warning{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+  <section class="panel page-panel">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Simulation</div>
+        <h1>Simulation controls</h1>
+      </div>
+      <span class="badge badge-sim">SIMULATION</span>
+    </div>
+    <p class="page-subtitle">Drive the simulated state of the node. Simulated parts are always labelled.</p>
+
+    <div class="chip-actions">
+      <button type="button" class="btn-primary" data-api-post="/api/sim/start/">Start simulation</button>
+      <button type="button" class="btn-ghost" data-api-post="/api/sim/pause/">Pause</button>
+      <button type="button" class="btn-ghost" data-api-post="/api/sim/inject/">Inject remote impact alert</button>
+      <button type="button" class="btn-ghost" data-api-post="/api/sim/stop/">Stop and clear</button>
+    </div>
+    <pre class="device-feedback" id="action-result">No action yet.</pre>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'web/js/actions.js' %}"></script>
+{% endblock scripts %}
