@@ -1,5 +1,7 @@
-"""Application logic layer."""
+"""APP layer: pure application logic. Imports only ``rte`` (and the standard library).
 
-from .rpt import build_report
+Modules: ``prx`` (proximity level), ``imp`` (impact detection), ``alr`` (alert manager),
+``rpt`` (60 s report), ``node`` (runtime step).
+"""
 
-__all__ = ["build_report"]
+__all__ = ["prx", "imp", "alr", "rpt", "node"]

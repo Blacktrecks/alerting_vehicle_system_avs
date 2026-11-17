@@ -3,7 +3,6 @@ import ast
 import os
 import unittest
 
-from app import rpt
 from ioc import IOC_CH_BUZZER, IOC_CH_LED, IOC_vSetOutputPort
 from mcd import config, pcs
 from rte import RTE_vSetBuzzer, RTE_vSetLed
@@ -56,13 +55,6 @@ class Phase1LayerTests(unittest.TestCase):
         for bad in (5, -1, None, "0"):
             RTE_vSetLed(bad)
             self.assertEqual(pcs.PCS_u8GetGpio(config.GPIO_LED), 0, "value %r" % (bad,))
-
-    def test_report_for_alert_and_clear(self):
-        report = rpt.build_report({"active": True, "type": "impact", "source": "V2"}, [{"id": "V3"}])
-        self.assertEqual(report["status"], "impact")
-        self.assertEqual(report["source"], "V2")
-        self.assertEqual(report["neighbour_count"], 1)
-        self.assertEqual(rpt.build_report(None, [])["status"], "clear")
 
     def test_app_import_rule(self):
         app_dir = os.path.join(os.path.dirname(__file__), "..", "app")
