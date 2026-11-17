@@ -41,6 +41,8 @@ def USB_vOpen(channel):
     with _lock:
         if channel in _channels:
             return
+        if cfg["error"] and config.simulation_mode() not in ("1", "true", "yes", "on"):
+            raise USBError(cfg["error"])       # ambiguous ports: the environment variable is required
         hw = serial is not None and os.path.exists(cfg["port"])
         if config.use_simulation(hw):
             _channels[channel] = {"sim": True, "ser": None,

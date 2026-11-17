@@ -7,6 +7,7 @@ Without lgpio or without /dev/gpiochip* the driver runs in simulation.
 import glob
 import os
 import threading
+import time
 
 from . import config
 
@@ -25,6 +26,13 @@ _simulated = True
 _handle = None
 _direction = {}              # pin -> "out" | "in"
 _level = {}                  # pin -> level (output cache / simulated values)
+
+# Edge counters (vibration sensors): rising edges, one per pulse.
+PCS_EDGE_DEBOUNCE_NS = 5_000_000     # edges closer than 5 ms to the last counted edge are ignored
+PCS_EDGE_COUNT_MAX = 0xFFFF          # the counter saturates (u16)
+_POLL_PERIOD_S = 0.0005              # polling fallback: 0.5 ms
+_edge_lock = threading.Lock()
+_edges = {}                  # pin -> {"count", "last_ns", "mode", "cb", "thread", "stop"}
 
 
 def _hw_available():
@@ -197,6 +205,7 @@ def PCS_vInit():
 def PCS_vDeinit():
     """Switch the outputs off, release the pins and reset the driver state."""
     global _initialized, _simulated, _handle
+    _stop_edge_counters()                # outside _lock: polling threads must be able to finish
     with _lock:
         if _initialized and not _simulated:
             for pin, direction in list(_direction.items()):
@@ -264,4 +273,130 @@ def PCS_vSimSetInput(u8Pin, value):
             raise RuntimeError("PCS_vSimSetInput is only available in simulation")
         if _direction.get(u8Pin) != "in":
             _configure(u8Pin, "in")
+        rising = value == PCS_PIN_ON and _level.get(u8Pin, PCS_PIN_OFF) == PCS_PIN_OFF
         _level[u8Pin] = int(value)
+    if rising:
+        _edge_event(u8Pin, time.perf_counter_ns())
+
+
+# ------------------------------------------------------------- edge counting
+def _edge_event(u8Pin, ts_ns):
+    """Register a rising edge seen at `ts_ns`; edges closer than 5 ms to the last counted one are dropped."""
+    with _edge_lock:
+        entry = _edges.get(u8Pin)
+        if entry is None:
+            return False
+        last = entry["last_ns"]
+        if last is not None and 0 <= ts_ns - last < PCS_EDGE_DEBOUNCE_NS:
+            return False
+        entry["last_ns"] = ts_ns
+        if entry["count"] < PCS_EDGE_COUNT_MAX:
+            entry["count"] += 1
+        return True
+
+
+def _poll_edges(u8Pin, handle, stop):
+    """Fallback when lgpio callbacks are unavailable: fast polling for rising edges."""
+    prev = 0
+    while not stop.is_set():
+        try:
+            level = int(lgpio.gpio_read(handle, u8Pin))
+        except Exception:
+            return                       # chip closed or I/O error: the counter just stops
+        if level and not prev:
+            _edge_event(u8Pin, time.perf_counter_ns())
+        prev = level
+        time.sleep(_POLL_PERIOD_S)
+
+
+def _start_hw_edge_source(u8Pin, entry):
+    """Claim the pin as an alert input (pull-down, so an unconnected optional sensor stays low)."""
+    pull = getattr(lgpio, "SET_PULL_DOWN", 0)
+    if u8Pin in _direction:
+        lgpio.gpio_free(_handle, u8Pin)
+    lgpio.gpio_claim_alert(_handle, u8Pin, lgpio.RISING_EDGE, pull)
+    _direction[u8Pin] = "in"
+
+    def _on_edge(chip, gpio, level, timestamp):
+        _edge_event(u8Pin, int(timestamp) if timestamp else time.perf_counter_ns())
+
+    try:
+        entry["cb"] = lgpio.callback(_handle, u8Pin, lgpio.RISING_EDGE, _on_edge)
+        entry["mode"] = "callback"
+    except Exception:
+        stop = threading.Event()
+        thread = threading.Thread(target=_poll_edges, args=(u8Pin, _handle, stop),
+                                  name="pcs-edge-%d" % u8Pin, daemon=True)
+        entry["stop"], entry["thread"], entry["mode"] = stop, thread, "poll"
+        thread.start()
+
+
+def _stop_edge_counters():
+    with _edge_lock:
+        entries = list(_edges.values())
+        _edges.clear()
+    for entry in entries:
+        if entry.get("stop") is not None:
+            entry["stop"].set()
+        if entry.get("thread") is not None:
+            entry["thread"].join(timeout=1.0)
+        if entry.get("cb") is not None:
+            try:
+                entry["cb"].cancel()
+            except Exception:
+                pass
+
+
+def PCS_vConfigEdgeCounter(u8Pin):
+    """Start counting rising edges (pulses) on an input pin (invalid pin: ignored; idempotent).
+
+    Edges closer than 5 ms to the previous counted edge are ignored (debounce in the driver).
+    """
+    if not _is_valid_pin(u8Pin):
+        return
+    with _lock:
+        PCS_vInit()
+        if u8Pin in _edges:
+            return
+        entry = {"count": 0, "last_ns": None, "mode": "sim", "cb": None, "thread": None, "stop": None}
+        if _simulated:
+            _configure(u8Pin, "in")
+        else:
+            _start_hw_edge_source(u8Pin, entry)
+        with _edge_lock:
+            _edges[u8Pin] = entry
+
+
+def PCS_u16GetEdgeCount(u8Pin, clear=False):
+    """Number of counted edges on the pin (0 if the pin has no edge counter); clear=True resets it."""
+    if not _is_valid_pin(u8Pin):
+        return 0
+    with _edge_lock:
+        entry = _edges.get(u8Pin)
+        if entry is None:
+            return 0
+        count = entry["count"]
+        if clear:
+            entry["count"] = 0
+        return count
+
+
+def PCS_sEdgeCounterMode(u8Pin):
+    """Edge source of the pin: "callback", "poll", "sim" or None (no edge counter)."""
+    with _edge_lock:
+        entry = _edges.get(u8Pin) if _is_valid_pin(u8Pin) else None
+        return entry["mode"] if entry else None
+
+
+def PCS_vSimInjectEdges(u8Pin, n):
+    """Simulation only: add `n` edges to a counted pin (injected edges bypass the debounce)."""
+    if not _is_valid_pin(u8Pin) or not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        return
+    with _lock:
+        PCS_vInit()
+        if not _simulated:
+            raise RuntimeError("PCS_vSimInjectEdges is only available in simulation")
+    with _edge_lock:
+        entry = _edges.get(u8Pin)
+        if entry is not None:
+            entry["count"] = min(PCS_EDGE_COUNT_MAX, entry["count"] + n)

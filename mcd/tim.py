@@ -1,6 +1,6 @@
 """TIM driver: polling-based timing for SCHED (no interrupts).
 
-Channels: 1 s (Zigbee), 60 s (LoRa report), alert (expiry, checked by SCHED).
+Channels: 1 s (Zigbee), 60 s (status report), alert (expiry, checked by SCHED), 100 ms (node step).
 Missed periods are resynchronized without bursts of calls.
 """
 import threading
@@ -9,7 +9,8 @@ import time
 TIM_CH_1S = 0
 TIM_CH_60S = 1
 TIM_CH_ALERT = 2
-TIM_NUM_CHANNELS = 3
+TIM_CH_100MS = 3
+TIM_NUM_CHANNELS = 4
 
 TIM_MODE_PERIODIC = 0
 TIM_MODE_ONESHOT = 1
