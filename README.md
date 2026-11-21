@@ -147,4 +147,5 @@ Hardware tests run only with `MCD_HW_TESTS=1` on the Pi. The full plan is in [do
 - [docs/hardware.md](docs/hardware.md): parts, wiring, pins, radio setup.
 - [docs/rte_api.md](docs/rte_api.md): every RTE function in the lab table format.
 - [docs/testing.md](docs/testing.md): test plan and acceptance checklist.
+- [docs/setup_guide.md](docs/setup_guide.md): install and run on Linux, Raspberry Pi 4/5 and Windows.
 - [AGENTS.md](AGENTS.md): project rules.
