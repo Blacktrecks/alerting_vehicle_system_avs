@@ -18,6 +18,7 @@ Region EU_868 · Wi-Fi/TCP control · LoRa messaging · Updated 17 November 2026
 10. [Troubleshooting](#10-troubleshooting)
 11. [Quick command reference](#11-quick-command-reference)
 12. [Placeholders used in this guide](#12-placeholders-used-in-this-guide)
+13. [Installing and running the program (Pi4/Pi5, Linux, Windows)](#13-installing-and-running-the-program-pi4pi5-linux-windows)
 
 ## 1. Overview
 
@@ -257,3 +258,73 @@ b.close()
 | `<YOUR_WIFI_PASSWORD>` | Your Wi-Fi password (keep it private) |
 | `!62f9fd48` | The node ID of the board you are sending to (see `--nodes`) |
 | `<DEV>` | `/dev/ttyACM0` or `/dev/ttyUSB0` |
+
+## 13. Installing and running the program (Pi4/Pi5, Linux, Windows)
+
+The guide above sets up the boards; this section installs the AVS program itself (the Django dashboard + sensor runtime). The full project install lives in [README.md](../README.md); this is the same steps checked against the code.
+
+Needs **Python 3.10+** and these packages (`requirements.txt`): Django >=5.2 <6, pyserial, meshtastic >=2.7.5, whitenoise.
+
+### Raspberry Pi 4 or Pi 5 (Raspberry Pi OS)
+
+Pi4 and Pi5 take the same steps. `lgpio` must come from apt, not pip, and the venv must see system packages:
+
+```bash
+sudo apt update
+sudo apt install python3-lgpio python3-venv git
+sudo usermod -aG dialout,gpio "$USER"   # log out and back in
+
+cd alerting_vehicle_system_AVS
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+pip install -r requirements-pi.txt
+
+cp .env.example .env
+nano .env    # DJANGO_SECRET_KEY, MESH_HMAC_KEY, DJANGO_ALLOWED_HOSTS
+```
+
+Run it with real hardware (`MCD_SIMULATE=0`) or autostart with systemd:
+
+```bash
+set -a; . ./.env; set +a
+MCD_SIMULATE=0 python manage.py runserver 0.0.0.0:8000 --noreload
+# or: sudo ./scripts/install-service.sh   (add --kiosk for the full-screen browser)
+```
+
+The systemd services (`proximity.service`, `kiosk.service`) are Linux-only; on Windows there is no equivalent, just run `runserver`.
+
+### Any Linux PC (no hardware attached)
+
+Everything falls back to simulation when GPIO or radios are missing, so a plain laptop works:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+MCD_SIMULATE=1 DJANGO_DEBUG=1 python manage.py runserver   # http://127.0.0.1:8000/
+```
+
+Serial ports are found automatically through `/dev/serial/by-id` (`mcd/config.py`). If detection says "ambiguous", set `ZIGBEE_PORT` / `MESHTASTIC_PORT` in `.env` to the full by-id path, and be in the `dialout` group.
+
+### Windows
+
+Windows works for simulation and for boards over USB/TCP, with three differences from Linux:
+
+1. **No `/dev/serial/by-id`**, so auto-detection cannot run (`mcd/config.py` reads that directory). Set the COM ports explicitly in `.env`, e.g. `ZIGBEE_PORT=COM3` and `MESHTASTIC_PORT=COM4`. Check the numbers in Device Manager; install the CP210x driver for Heltec boards if the port does not appear.
+2. **No lgpio**, so GPIO is always simulated on Windows (`mcd/pcs.py` falls back when lgpio or `/dev/gpiochip*` is missing). Use `MCD_SIMULATE=1`.
+3. **Commands differ**: activate with `.venv\Scripts\activate`, set variables with `$env:MCD_SIMULATE="1"` (PowerShell) or `set MCD_SIMULATE=1` (cmd), and use PuTTY serial instead of picocom. For the network scan, nmap also exists for Windows; otherwise any LAN scanner that checks TCP port 4403 works.
+
+```powershell
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+$env:MCD_SIMULATE = "1"; $env:DJANGO_DEBUG = "1"
+python manage.py runserver
+```
+
+The dashboard's Devices page uses `serial.tools.list_ports`, which works on Windows too, so boards show up there once the COM port is set in `.env`.
+
+### What I checked and what I did not
+
+- Checked against the code in this repo: `requirements.txt`, `requirements-pi.txt`, `mcd/config.py` (by-id detection), `mcd/pcs.py` (lgpio fallback), `scripts/install-service.sh`, README quick-starts.
+- Not verified by running on a Pi or a Windows machine in this session — the Windows and Pi steps are read from the code, not executed here.
