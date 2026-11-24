@@ -52,7 +52,13 @@ TARGET_GPIO_LABELS = {"pinctrl-rp1", "pinctrl-bcm2711"}
 
 
 def _parse_chip_label(value):
-    """Extract a chip label from the various structures returned by lgpio."""
+    """Extract a chip label from the various structures returned by lgpio.
+
+    lggpio.gpio_get_chip_info may return a dict, an object with ``label``/``name``, or a plain
+    tuple. For a tuple the position is not fixed across versions: known layouts are
+    (status, lines, name, label) and (base, name, label); so for a tuple of strings the LAST
+    string is taken as the label, never the first one.
+    """
     if value is None:
         return None
     if isinstance(value, dict):
@@ -63,6 +69,11 @@ def _parse_chip_label(value):
                 return parsed
         return None
     if isinstance(value, (list, tuple)):
+        strings = [entry for entry in value if isinstance(entry, str)]
+        if strings and all(len(entry) > 1 for entry in strings):
+            # Known tuple layouts put the label last: (status, lines, name, label) or
+            # (base, name, label). Taking the first string would return the chip NAME.
+            return strings[-1].strip().lower()
         for entry in value:
             parsed = _parse_chip_label(entry)
             if parsed is not None:
@@ -82,11 +93,24 @@ def _parse_chip_label(value):
 
 
 def _read_chip_label(chip_id):
-    """Try to read the chip label from lgpio or from sysfs."""
+    """Try to read the chip label from sysfs first, then from lgpio.
+
+    The handle returned by gpiochip_open is always closed. If no label can be read, returns None.
+    """
+    label_path = "/sys/class/gpio/gpiochip%d/label" % chip_id
+    try:
+        if os.path.exists(label_path):
+            with open(label_path, "r", encoding="utf-8") as handle:
+                label = handle.read().strip().lower()
+                if label:
+                    return label
+    except OSError:
+        pass
+
     if lgpio is not None:
         for attempt in (
             lambda cid: lgpio.gpio_get_chip_info(cid),
-            lambda cid: (lambda handle: lgpio.gpio_get_chip_info(handle))(lgpio.gpiochip_open(cid)),
+            lambda cid: _chip_info_from_open_handle(cid),
         ):
             try:
                 label = _parse_chip_label(attempt(chip_id))
@@ -95,14 +119,19 @@ def _read_chip_label(chip_id):
             except Exception:
                 continue
 
-    label_path = "/sys/class/gpio/gpiochip%d/label" % chip_id
-    try:
-        if os.path.exists(label_path):
-            with open(label_path, "r", encoding="utf-8") as handle:
-                return handle.read().strip().lower()
-    except OSError:
-        pass
     return None
+
+
+def _chip_info_from_open_handle(chip_id):
+    """Read chip info through an opened handle and close the handle."""
+    handle = lgpio.gpiochip_open(chip_id)
+    try:
+        return lgpio.gpio_get_chip_info(handle)
+    finally:
+        try:
+            lgpio.gpiochip_close(handle)
+        except Exception:
+            pass
 
 
 def _resolve_gpiochip():

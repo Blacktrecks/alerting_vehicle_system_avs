@@ -813,6 +813,79 @@ class PcsChipSelectionTests(unittest.TestCase):
             else:
                 os.environ["MCD_GPIOCHIP"] = old
 
+    def test_parse_chip_label_tuple_order_status_lines_name_label(self):
+        # Layout (status, lines, name, label): the label is the LAST string, not the first.
+        value = (0, 32, "pinctrl-rp1", "pinctrl-rp1")
+        self.assertEqual(pcs._parse_chip_label(value), "pinctrl-rp1")
+        value = (4, "gpiochip4", "pinctrl-rp1")
+        self.assertEqual(pcs._parse_chip_label(value), "pinctrl-rp1")
+        # A tuple where name and label differ must return the LABEL.
+        value = (0, 32, "gpiochip0", "pinctrl-bcm2711")
+        self.assertEqual(pcs._parse_chip_label(value), "pinctrl-bcm2711")
+
+    def test_resolve_gpiochip_with_tuple_labels_pi5(self):
+        old = os.environ.get("MCD_GPIOCHIP")
+        os.environ.pop("MCD_GPIOCHIP", None)
+        original_glob = pcs.glob.glob
+        original_exists = os.path.exists
+        original_open = builtins.open
+        original_lgpio = pcs.lgpio
+        try:
+            pcs.glob.glob = lambda pattern: ["/dev/gpiochip0", "/dev/gpiochip4"]
+            os.path.exists = lambda path: False  # force the lgpio path
+
+            def fake_open(path, mode="r", *args, **kwargs):
+                raise FileNotFoundError(path)
+
+            builtins.open = fake_open
+            # Tuple order (status, lines, name, label): chip 0 is not the target.
+            pcs.lgpio = type("FakeLgpio", (), {
+                "gpio_get_chip_info": lambda self, chip: (0, 32, "gpiochip%d" % chip, "pinctrl-bcm2835") if chip != 4 else (0, 32, "gpiochip4", "pinctrl-rp1"),
+                "gpiochip_open": lambda self, chip: chip,
+                "gpiochip_close": lambda self, chip: None,
+            })()
+            self.assertEqual(pcs._resolve_gpiochip(), 4)
+        finally:
+            pcs.glob.glob = original_glob
+            os.path.exists = original_exists
+            builtins.open = original_open
+            pcs.lgpio = original_lgpio
+            if old is None:
+                os.environ.pop("MCD_GPIOCHIP", None)
+            else:
+                os.environ["MCD_GPIOCHIP"] = old
+
+    def test_resolve_gpiochip_with_dict_labels_pi4(self):
+        old = os.environ.get("MCD_GPIOCHIP")
+        os.environ.pop("MCD_GPIOCHIP", None)
+        original_glob = pcs.glob.glob
+        original_exists = os.path.exists
+        original_open = builtins.open
+        original_lgpio = pcs.lgpio
+        try:
+            pcs.glob.glob = lambda pattern: ["/dev/gpiochip0", "/dev/gpiochip1"]
+            os.path.exists = lambda path: False
+
+            def fake_open(path, mode="r", *args, **kwargs):
+                raise FileNotFoundError(path)
+
+            builtins.open = fake_open
+            pcs.lgpio = type("FakeLgpio", (), {
+                "gpio_get_chip_info": lambda self, chip: {"name": "gpiochip%d" % chip, "label": "pinctrl-bcm2711" if chip == 1 else "pinctrl-bcm2835"},
+                "gpiochip_open": lambda self, chip: chip,
+                "gpiochip_close": lambda self, chip: None,
+            })()
+            self.assertEqual(pcs._resolve_gpiochip(), 1)
+        finally:
+            pcs.glob.glob = original_glob
+            os.path.exists = original_exists
+            builtins.open = original_open
+            pcs.lgpio = original_lgpio
+            if old is None:
+                os.environ.pop("MCD_GPIOCHIP", None)
+            else:
+                os.environ["MCD_GPIOCHIP"] = old
+
     def test_detect_gpiochip_by_label_when_available(self):
         old = os.environ.get("MCD_GPIOCHIP")
         os.environ.pop("MCD_GPIOCHIP", None)
