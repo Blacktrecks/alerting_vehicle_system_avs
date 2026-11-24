@@ -32,7 +32,7 @@ except ImportError:                                           # pragma: no cover
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 STATE_KEYS = {"time", "running", "distance_cm", "sensor_fault", "level", "buzzer", "led", "impact",
               "remote_level", "last_remote_alert", "mesh", "zigbee", "simulation", "counters",
-              "vibration_edges_total", "impacts_total", "report", "events"}
+              "vibration_edges_total", "vibration_level", "impacts_total", "report", "events"}
 _ENV = {"MCD_SIMULATE": "1", "MESH_HMAC_KEY": "web-test-key", "MESH_NODE_ID": "0x01020304"}
 _CLEAR = ("ZIGBEE_PORT", "MESHTASTIC_PORT", "MCD_ZIGBEE_PORT", "MCD_MESHTASTIC_PORT", "MCD_SERIAL_BY_ID_DIR",
           "SIM_V2_PORT", "SIM_V2_HOST", "SIM_V3_PORT", "SIM_V3_HOST")

@@ -9,8 +9,9 @@ import threading
 import time
 from collections import deque
 
-from rte import (RTE_DISTANCE_INVALID, RTE_u8GetTick60s, RTE_u8GetTick100ms, RTE_u16ReadDistanceCm,
-                 RTE_vDeinit, RTE_vInit)
+from rte import (RTE_DISTANCE_INVALID, RTE_u8GetTick1s, RTE_u8GetTick60s, RTE_u8GetTick100ms,
+                 RTE_u16ReadDistanceCm, RTE_u8GetDistanceSensorStatus, RTE_u8GetMeshStatus,
+                 RTE_u8GetVibrationState, RTE_u8GetZigbeeStatus, RTE_vDeinit, RTE_vInit)
 
 from .alr import ALR_vShutdown, ALR_vStep, AlertManager
 from .imp import IMP, IMP_vStep
@@ -43,16 +44,25 @@ class NodeRuntime:
         self.led = 0
         self.steps = 0
         self._fault_prev = False
+        self._link_prev = {"mesh": None, "zigbee": None}   # link status seen at the previous 1 s tick
         self.pulses = {}                 # output name -> end time (ms) of a manual test pulse
 
     def log(self, text):
         self.events.append({"time": time.time(), "text": text})
 
+    def _check_links(self, now_ms):
+        """Log mesh and zigbee link up/down transitions once per second."""
+        for radio, status in (("mesh", RTE_u8GetMeshStatus()), ("zigbee", RTE_u8GetZigbeeStatus())):
+            prev = self._link_prev[radio]
+            if prev is not None and prev != status:
+                self.log("%s link %s" % (radio, "up" if status else "down"))
+            self._link_prev[radio] = status
+
     def step(self, now_ms):
         old_level = self.level
         self.level = PRX_vStep(self.prx, now_ms)
         self.distance_cm = RTE_u16ReadDistanceCm()
-        valid = self.distance_cm != RTE_DISTANCE_INVALID
+        valid = bool(RTE_u8GetDistanceSensorStatus())
         self.rpt.add_sample(self.distance_cm, self.level, valid)
         if self.level != old_level:
             self.log("level %d -> %d" % (old_level, self.level))
@@ -62,6 +72,8 @@ class NodeRuntime:
         elif self._fault_prev and not self.prx.fault:
             self.log("sensor recovered")
         self._fault_prev = self.prx.fault
+        if RTE_u8GetTick1s():
+            self._check_links(now_ms)
 
         if IMP_vStep(self.imp, now_ms):
             self.rpt.add_impact()
@@ -76,7 +88,7 @@ class NodeRuntime:
         if self.alr.active:                                 # a real alert always wins over a test pulse
             self.pulses.clear()
         self.pulses = {k: t for k, t in self.pulses.items() if now_ms < t}
-        actions = ALR_vStep(self.alr, now_ms, self.level, self.impact, self.distance_cm,
+        actions = ALR_vStep(self.alr, now_ms,
                             on_rx=on_rx, on_tx=lambda radio, kind, level: self.rpt.add_tx(radio),
                             buzzer_min=1 if "buzzer" in self.pulses else 0,
                             led_min=1 if "led" in self.pulses else 0)
@@ -187,6 +199,7 @@ def NODE_tGetStatus():
             "report": r.last_report,
             "counters": r.rpt.snapshot(),
             "vibration_edges_total": r.imp.edges_total,
+            "vibration_level": RTE_u8GetVibrationState(),
             "impacts_total": r.imp.total,
             "steps": r.steps,
             "running": NODE_bIsRunning(),

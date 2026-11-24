@@ -91,6 +91,29 @@ class LayerRuleTests(unittest.TestCase):
         self.assertEqual(found, {"mcd", "django"})
         self.assertNotIn("mcd", ALLOWED["app"])
 
+    def test_every_public_rte_function_has_a_caller(self):
+        """No dead public RTE_* function: each must be referenced in app/, web/ or sim/.
+
+        A reference counts as a call (ast.Call) or as a name used as a value (dict/tuple
+        registration, e.g. the radio getters and senders in ALR_vStep).
+        """
+        import rte
+        callers = set()
+        for layer in ("app", "web", "sim"):
+            for path in layer_files(layer, skip_tests=False):
+                for node in ast.walk(ast.parse(open(path, encoding="utf-8").read(), filename=path)):
+                    name = None
+                    if isinstance(node, ast.Call):
+                        f = node.func
+                        name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", None)
+                    elif isinstance(node, ast.Name):
+                        name = node.id
+                    if name and name.startswith("RTE_"):
+                        callers.add(name)
+        public = {n for n in dir(rte) if n.startswith("RTE_") and callable(getattr(rte, n))}
+        dead = sorted(public - callers)
+        self.assertEqual(dead, [], "dead RTE functions with no caller in app/, web/ or sim/: %s" % ", ".join(dead))
+
 
 if __name__ == "__main__":
     unittest.main()

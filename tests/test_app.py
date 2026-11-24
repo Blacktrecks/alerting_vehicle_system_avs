@@ -356,7 +356,7 @@ class NodeStepTests(_NodeTestCase):
             with mock.patch.object(alr, name, side_effect=[alert, None]), \
                     mock.patch.object(alr, "RTE_tGetMeshAlert" if radio == "zigbee" else "RTE_tGetZigbeeAlert",
                                       return_value=None):
-                alr.ALR_vStep(m, 0, 0, 0, 300, on_rx=lambda r, a: seen.append((r, a["node"])))
+                alr.ALR_vStep(m, 0, on_rx=lambda r, a: seen.append((r, a["node"])))
             self.assertEqual(seen, [(radio, 9)])
             self.assertEqual(m.last_remote["radio"], radio)
             self.assertEqual(rte.RTE_u8ReadRemoteAlertLevel(), 2)

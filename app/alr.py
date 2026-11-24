@@ -10,7 +10,8 @@ Buzzer and LED are ALWAYS forced off by ``ALR_vShutdown``.
 """
 
 from rte import (RTE_KIND_IMPACT, RTE_KIND_PROXIMITY, RTE_tGetMeshAlert, RTE_tGetZigbeeAlert,
-                 RTE_u16SendMeshAlert, RTE_u16SendZigbeeAlert, RTE_vSetBuzzer, RTE_vSetLed,
+                 RTE_u16ReadDistanceCm, RTE_u16SendMeshAlert, RTE_u16SendZigbeeAlert,
+                 RTE_u8ReadImpact, RTE_u8ReadAlertLevel, RTE_vSetBuzzer, RTE_vSetLed,
                  RTE_vWriteRemoteAlertLevel)
 
 ALR_LEVEL_PATTERNS_MS = {1: (200, 1000), 2: (200, 500)}     # level: (on time, period)
@@ -100,8 +101,12 @@ def ALR_vShutdown():
     RTE_vSetLed(0)
 
 
-def ALR_vStep(manager, now_ms, level, impact, distance_cm, on_rx=None, on_tx=None, buzzer_min=0, led_min=0):
-    """Poll both radios for remote alerts, apply buzzer/LED outputs, send alerts.
+def ALR_vStep(manager, now_ms, on_rx=None, on_tx=None, buzzer_min=0, led_min=0):
+    """Read the RTE signals (level, impact, distance), poll both radios for remote alerts,
+    apply buzzer/LED outputs, send alerts.
+
+    The local inputs come only from the signal bus: ``RTE_u8ReadAlertLevel``,
+    ``RTE_u8ReadImpact`` and ``RTE_u16ReadDistanceCm`` (written by PRX and IMP).
 
     ``on_rx(radio, alert)`` / ``on_tx(radio, kind, level)`` are optional notification hooks.
     ``buzzer_min`` / ``led_min`` (0/1) keep an output on for a manual test pulse; they are OR-ed with the pattern.
@@ -116,7 +121,8 @@ def ALR_vStep(manager, now_ms, level, impact, distance_cm, on_rx=None, on_tx=Non
             if on_rx:
                 on_rx(radio, alert)
     RTE_vWriteRemoteAlertLevel(manager.remote_level(now_ms))
-    actions = manager.update(now_ms, level, impact, distance_cm)
+    actions = manager.update(now_ms, RTE_u8ReadAlertLevel(), RTE_u8ReadImpact(),
+                             RTE_u16ReadDistanceCm())
     actions["buzzer"] |= 1 if buzzer_min else 0
     actions["led"] |= 1 if led_min else 0
     RTE_vSetBuzzer(actions["buzzer"])

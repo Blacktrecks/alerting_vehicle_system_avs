@@ -68,6 +68,7 @@ def state():
         "led": status["led"],
         "impact": status["impact"],
         "remote_level": RTE_u8ReadRemoteAlertLevel(),
+        "vibration_level": status["vibration_level"],
         "last_remote_alert": remote,
         "mesh": mesh,
         "zigbee": zigbee,
@@ -239,7 +240,7 @@ TESTS = {"buzzer_led": _t_buzzer_led, "ultrasonic": _t_ultrasonic, "vibration": 
 
 
 def tests_list():
-    return 200, {"tests": list(TESTS)}
+    return 200, {"tests": list(TESTS), "vibration_level": node.NODE_tGetStatus()["vibration_level"]}
 
 
 def tests_run(name):

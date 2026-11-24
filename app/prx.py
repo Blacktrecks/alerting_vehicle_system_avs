@@ -9,7 +9,8 @@ and the sensor-fault flag is raised until a valid reading arrives.
 ``PRX`` is pure logic (explicit time argument, no I/O); ``PRX_vStep`` is the thin RTE wrapper.
 """
 
-from rte import RTE_DISTANCE_INVALID, RTE_u16GetDistanceCm, RTE_vWriteAlertLevel, RTE_vWriteDistanceCm
+from rte import (RTE_DISTANCE_INVALID, RTE_u16GetDistanceCm, RTE_u8GetDistanceSensorStatus,
+                 RTE_vWriteAlertLevel, RTE_vWriteDistanceCm)
 
 PRX_THRESHOLDS_CM = ((30, 3), (80, 2), (150, 1))   # (max distance, level), most severe first
 PRX_CONFIRM_SAMPLES = 3
@@ -66,8 +67,14 @@ class PRX:
 
 
 def PRX_vStep(prx, now_ms):
-    """Read the sensor through the RTE, update ``prx`` and publish distance and level signals."""
+    """Read the sensor through the RTE, update ``prx`` and publish distance and level signals.
+
+    ``RTE_u8GetDistanceSensorStatus`` is the validity flag for this sample on the bus:
+    when it says invalid, PRX publishes ``RTE_DISTANCE_INVALID`` as the distance value.
+    """
     distance = RTE_u16GetDistanceCm()
+    if not RTE_u8GetDistanceSensorStatus():
+        distance = RTE_DISTANCE_INVALID
     level = prx.update(distance, now_ms)
     RTE_vWriteDistanceCm(distance)
     RTE_vWriteAlertLevel(level)

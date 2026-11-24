@@ -39,9 +39,16 @@ Two kinds of RTE function:
 
 1. **BSW access** (lifecycle, buzzer, LED, distance, vibration, ticks, radios): translate an application request into IOC /
    SDC / SCHED calls. APP never imports `mcd`, `ioc`, `sdc` or `sched`.
-2. **Signals** (`RTE_vWrite*` / `RTE_u*Read*`): a lock-protected store that works as the virtual functional bus. PRX writes the
-   distance, IMP writes the impact flag, ALR writes the levels, and ALR / RPT / the web views read them, so application
+2. **Signals** (`RTE_vWrite*` / `RTE_u*Read*`): a lock-protected store that works as the virtual functional bus.
+   Every signal has exactly one writer module and its readers are listed in the table below, so application
    modules never call each other directly.
+
+| Signal | Writer | Readers |
+|---|---|---|
+| `distance_cm` | app/prx.py | app/alr.py, app/node.py |
+| `alert_level` | app/prx.py | app/alr.py |
+| `remote_alert_level` | app/alr.py | web/api.py |
+| `impact` | app/imp.py | app/alr.py |
 
 Function groups: Lifecycle (2), BSW outputs (2), BSW inputs (4), Timing (3), LoRa Meshtastic (4), Zigbee (3), Signals (virtual functional bus) (8). Total: 26 functions.
 

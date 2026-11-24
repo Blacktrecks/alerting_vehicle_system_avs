@@ -31,3 +31,9 @@ Object.keys(TEST_NAMES).forEach(function (name) {
   rows[name] = { badge: badge, detail: detail };
 });
 document.getElementById("run-all").addEventListener("click", function (e) { run("all", e.target); });
+
+async function showVibrationLevel() {
+  const r = await api("/api/tests/");
+  if (r.ok) { document.getElementById("vibration-level").textContent = r.data.vibration_level; }
+}
+showVibrationLevel();
