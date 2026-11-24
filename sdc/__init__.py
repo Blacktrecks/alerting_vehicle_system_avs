@@ -7,6 +7,7 @@ from .packets import (
     FrameDecoder,
     PacketError,
     ReplayGuard,
+    RESYNC_AFTER_REJECTS,
     decode_alert,
     encode_alert,
     frame_encode,
@@ -21,6 +22,7 @@ from .zigbee_link import ZigbeeLink
 
 __all__ = [
     "ALERT_LEN", "BadSignatureError", "FrameDecoder", "PacketError", "ReplayGuard",
+    "RESYNC_AFTER_REJECTS",
     "decode_alert", "encode_alert", "frame_encode", "node_id_from_name", "validate_replay",
     "SerialTransport", "SimulatedTransport", "TCPTransport", "ZigbeeTransport",
     "MeshtasticLink", "ZigbeeLink",

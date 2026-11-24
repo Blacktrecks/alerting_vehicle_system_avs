@@ -136,6 +136,7 @@ def node_id_from_name(name: str) -> int:
 
 # ------------------------------------------------------------------ replay protection
 REPLAY_WINDOW = 128
+RESYNC_AFTER_REJECTS = 3
 
 
 def validate_replay(seq, last_seq) -> bool:
@@ -155,22 +156,41 @@ def validate_replay(seq, last_seq) -> bool:
 
 
 class ReplayGuard:
-    """Remembers the last accepted sequence number per sender node."""
+    """Remembers the last accepted sequence number per sender node.
+
+    A sender that reboots restarts its sequence at 0, so its first packets look like replays.
+    After RESYNC_AFTER_REJECTS consecutive rejected packets from one node whose sequence numbers
+    increase by 1 each time, the guard resyncs: it accepts that packet and restarts tracking there.
+    """
 
     def __init__(self):
         self._last: dict[int, int] = {}
+        # node -> (last rejected seq, consecutive increasing rejects)
+        self._rejects: dict[int, tuple[int, int]] = {}
+        self.resynced = False
         self._lock = threading.Lock()
 
     def accept(self, node, seq) -> bool:
         with self._lock:
-            if not validate_replay(seq, self._last.get(node)):
-                return False
-            self._last[node] = seq
-            return True
+            if validate_replay(seq, self._last.get(node)):
+                self._last[node] = seq
+                self._rejects.pop(node, None)
+                return True
+            prev, count = self._rejects.get(node, (None, 0))
+            count = count + 1 if prev is not None and ((seq - prev) & 0xFF) == 1 else 1
+            self._rejects[node] = (seq, count)
+            if count >= RESYNC_AFTER_REJECTS:
+                self._last[node] = seq
+                self._rejects.pop(node, None)
+                self.resynced = True
+                return True
+            return False
 
     def reset(self) -> None:
         with self._lock:
             self._last.clear()
+            self._rejects.clear()
+            self.resynced = False
 
 
 # ------------------------------------------------------------------ Zigbee framing

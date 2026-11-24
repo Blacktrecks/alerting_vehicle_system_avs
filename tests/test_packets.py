@@ -5,7 +5,7 @@ import unittest
 
 from mcd import config
 from sdc import (ALERT_LEN, BadSignatureError, FrameDecoder, MeshtasticLink, PacketError, ReplayGuard,
-                 ZigbeeLink, decode_alert, encode_alert, frame_encode, node_id_from_name, validate_replay)
+                 RESYNC_AFTER_REJECTS, ZigbeeLink, decode_alert, encode_alert, frame_encode, node_id_from_name, validate_replay)
 from sdc import packets
 from sdc.registry import classify_port
 
@@ -120,6 +120,38 @@ class ReplayTests(unittest.TestCase):
         self.assertTrue(guard.accept(1, 11))
         guard.reset()
         self.assertTrue(guard.accept(1, 5))
+
+    def test_guard_resyncs_after_sender_reboot(self):
+        # Sender saw seq 100, reboots and restarts at 0: the first RESYNC_AFTER_REJECTS
+        # packets are rejected, then the guard resyncs and accepts.
+        guard = ReplayGuard()
+        self.assertTrue(guard.accept(1, 100))
+        for seq in range(RESYNC_AFTER_REJECTS - 1):
+            self.assertFalse(guard.accept(1, seq), "seq %d should be rejected" % seq)
+        self.assertFalse(guard.resynced)
+        # The RESYNC_AFTER_REJECTS-th consecutive rejected packet is accepted and resyncs the guard.
+        self.assertTrue(guard.accept(1, RESYNC_AFTER_REJECTS - 1), "resync must accept")
+        self.assertTrue(guard.resynced)
+        self.assertTrue(guard.accept(1, RESYNC_AFTER_REJECTS))
+        # Normal replay protection still works after the resync.
+        self.assertFalse(guard.accept(1, RESYNC_AFTER_REJECTS))
+
+    def test_guard_resync_needs_consecutive_increases(self):
+        guard = ReplayGuard()
+        self.assertTrue(guard.accept(1, 100))
+        # Rejected packets that do not increase by 1 must not trigger the resync.
+        for seq in (50, 60, 70):
+            self.assertFalse(guard.accept(1, seq))
+        self.assertFalse(guard.resynced)
+        # A single older packet from another node is still a replay (first packet accepted).
+        self.assertTrue(guard.accept(2, 3))
+        self.assertFalse(guard.accept(2, 2))
+        # The same node needs RESYNC_AFTER_REJECTS consecutive increasing rejects before resync.
+        guard.reset()
+        self.assertTrue(guard.accept(1, 100))
+        self.assertFalse(guard.accept(1, 71))
+        self.assertFalse(guard.accept(1, 72))
+        self.assertTrue(guard.accept(1, 73))
 
 
 class FramingTests(_EnvCase):

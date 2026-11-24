@@ -97,8 +97,9 @@ Trade-offs:
   warning-only demonstration; it is not a security design.
 - The key is shared (`MESH_HMAC_KEY`). Anyone with the key can forge alerts.
 - Replay protection is kept per sender node id: a packet is accepted only if its sequence number is newer than the
-  last one from that node, inside a window of 128 with 8-bit wrap-around. Equal or older numbers are dropped, which also means a sender that
-  restarts at seq 0 may be ignored until it passes the old value.
+  last one from that node, inside a window of 128 with 8-bit wrap-around. Equal or older numbers are dropped. A sender
+  that reboots and restarts at seq 0 is resynced after 3 consecutive rejected packets whose sequence numbers increase
+  by 1 each time (`RESYNC_AFTER_REJECTS` in `sdc/packets.py`).
 - The CRC of the Zigbee frame only detects line noise; authenticity is decided by the HMAC.
 
 ## Threading model
