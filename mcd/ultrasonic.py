@@ -30,6 +30,7 @@ US_SIM_DEFAULT_CM = 300
 
 US_TRIGGER_PULSE_NS = 12_000         # >= 10 us required by the sensor
 US_TIMEOUT_NS = 30_000_000           # 30 ms (echo of 400 cm = 23.3 ms)
+US_MEDIAN_READS = 3                  # hardware: median of this many echo times, to cut CPU jitter
 _US_PER_CM = 58
 
 _lock = threading.RLock()
@@ -39,14 +40,15 @@ _sim_distance = US_SIM_DEFAULT_CM    # None = "no echo"
 _last_valid = False
 
 # Pin access used by the real measurement; replaceable by tests (see _use_backend).
-_io = {"write": pcs.PCS_vSetOutputGpio, "read": pcs.PCS_u8GetGpio, "now": time.perf_counter_ns}
+# "edge" is the kernel edge wait: callable(pin, timeout_ns) -> timestamp_ns or None.
+_io = {"write": pcs.PCS_vSetOutputGpio, "read": pcs.PCS_u8GetGpio, "now": time.perf_counter_ns, "edge": None}
 
 
-def _use_backend(write, read, now_ns):
+def _use_backend(write, read, now_ns, edge=None):
     """Tests only: replace the pin access and force the hardware (non-simulated) code path."""
     global _initialized, _simulated
     with _lock:
-        _io.update(write=write, read=read, now=now_ns)
+        _io.update(write=write, read=read, now=now_ns, edge=edge)
         _simulated = False
         _initialized = True
 
@@ -104,8 +106,32 @@ def _to_distance_cm(echo_us):
     return cm if US_MIN_CM <= cm <= US_MAX_CM else US_DISTANCE_INVALID
 
 
+def _kernel_edge(pin, timeout_ns):
+    """Kernel timestamp of the next edge on a pin, or None if lgpio cannot do it here.
+
+    Uses lgpio.gpio_wait_for_edge when the installed lgpio has it (the name must be confirmed on
+    the Pi, see docs/hardware.md); without it the caller falls back to the polling loop.
+    """
+    lgpio = getattr(pcs, "lgpio", None)
+    wait = getattr(lgpio, "gpio_wait_for_edge", None) if lgpio is not None else None
+    if wait is None or pcs._handle is None:
+        return None
+    try:
+        event = wait(pcs._handle, pin, lgpio.RISING_EDGE, timeout_ns / 1000.0)
+    except Exception:
+        return None
+    if not event:
+        return None
+    stamp = event[1] if isinstance(event, (list, tuple)) and len(event) > 1 else event
+    return int(stamp)
+
+
 def _measure_echo_us():
-    """One trigger + echo timing on the real pins. Returns the echo high time in us, or None on timeout."""
+    """One trigger + echo timing on the real pins. Returns the echo high time in us, or None on timeout.
+
+    Uses kernel edge timestamps when available (the polling loop is only a fallback), so the
+    measurement does not depend on how fast Python can read the pin.
+    """
     write, read, now = _io["write"], _io["read"], _io["now"]
     trig, echo = config.GPIO_US_TRIG, config.GPIO_US_ECHO
     write(trig, 0)
@@ -114,6 +140,14 @@ def _measure_echo_us():
     while now() - t0 < US_TRIGGER_PULSE_NS:
         pass
     write(trig, 0)
+    edge_fn = _io.get("edge") or _kernel_edge
+    if edge_fn is not None:
+        rise = edge_fn(echo, US_TIMEOUT_NS)
+        if rise is not None:
+            fall = edge_fn(echo, US_TIMEOUT_NS)
+            if fall is not None:
+                return (fall - rise) / 1000.0
+        # No kernel edge available here: fall back to the polling loop.
     t0 = now()
     while read(echo) == 0:                       # wait for the rising edge
         if now() - t0 > US_TIMEOUT_NS:
@@ -125,8 +159,20 @@ def _measure_echo_us():
     return (now() - rise) / 1000.0
 
 
+def _median(values):
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2]
+
+
 def US_u16ReadDistanceCm():
-    """Measure once. Distance in cm (2-400) or US_DISTANCE_INVALID (no echo / out of range)."""
+    """Distance in cm (2-400) or US_DISTANCE_INVALID (no echo / out of range).
+
+    On hardware the echo time is the median of US_MEDIAN_READS measurements, so one jittered
+    reading does not move the result. A measurement that gets no echo stops there: the sensor
+    is not hammered again. In simulation the simulated value is returned as before.
+    """
     global _last_valid
     with _lock:
         US_vInit()
@@ -135,8 +181,15 @@ def US_u16ReadDistanceCm():
             if cm != US_DISTANCE_INVALID and not US_MIN_CM <= cm <= US_MAX_CM:
                 cm = US_DISTANCE_INVALID
         else:
-            echo_us = _measure_echo_us()
-            cm = US_DISTANCE_INVALID if echo_us is None else _to_distance_cm(echo_us)
+            samples = []
+            for _ in range(US_MEDIAN_READS):
+                echo_us = _measure_echo_us()
+                if echo_us is None:
+                    cm = US_DISTANCE_INVALID
+                    break
+                samples.append(echo_us)
+            else:
+                cm = _to_distance_cm(_median(samples))
         _last_valid = cm != US_DISTANCE_INVALID
         return cm
 

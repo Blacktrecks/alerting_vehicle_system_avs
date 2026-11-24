@@ -363,8 +363,51 @@ class UltrasonicTests(_DriverTestCase):
         self.assertFalse(ultrasonic.US_bLastReadValid())
         self.assertEqual(ultrasonic.US_u16ReadDistanceCm(), 300)
 
-    def _hw(self, sensor):
-        ultrasonic._use_backend(sensor.write, sensor.read, sensor.now)
+    def _hw(self, sensor, edge=None):
+        ultrasonic._use_backend(sensor.write, sensor.read, sensor.now, edge)
+
+    def test_median_of_three_removes_a_jittered_reading(self):
+        # Polling path (no kernel edge): the first echo is jittered by +58 us (= 1 cm),
+        # the next two are exact. The median must give the true distance.
+        class JitterSensor(FakeSensor):
+            def __init__(self, echo_us, jitters):
+                super().__init__(echo_us=echo_us)
+                self.jitters = list(jitters)
+                self.n = 0
+
+            def read(self, pin):
+                if pin != config.GPIO_US_ECHO or self.trig_fall is None:
+                    return 0
+                start = self.trig_fall + self.delay_us * 1000
+                extra = self.jitters[self.n] if self.n < len(self.jitters) else 0
+                end = start + (self.echo_us + extra) * 1000
+                if self.t >= end:
+                    self._busy = False
+                    self.n += 1
+                return 1 if start <= self.t < end else 0
+
+        sensor = JitterSensor(100 * 58, (58, 0, 0))
+        self._hw(sensor)
+        self.assertEqual(ultrasonic.US_u16ReadDistanceCm(), 100)
+        self.assertEqual(sensor.measurements, 3)
+
+    def test_kernel_edge_timestamps_are_used_when_available(self):
+        # A fake kernel edge wait: exact timestamps, no polling jitter.
+        sensor = FakeSensor(echo_us=100 * 58)
+        calls = []
+
+        def edge(pin, timeout_ns):
+            calls.append((pin, timeout_ns))
+            # Kernel timestamps: rising edge after the sensor delay, falling edge echo_us later.
+            return (sensor.delay_us * 1000 if len(calls) % 2 == 1 else (sensor.delay_us + sensor.echo_us) * 1000)
+
+        self._hw(sensor, edge=edge)
+        self.assertEqual(ultrasonic.US_u16ReadDistanceCm(), 100)
+        # Median of US_MEDIAN_READS measurements, two edge waits per measurement.
+        expected = 2 * ultrasonic.US_MEDIAN_READS
+        self.assertEqual(len(calls), expected)
+        self.assertEqual([c[0] for c in calls], [config.GPIO_US_ECHO] * expected)
+        self.assertEqual([c[1] for c in calls], [ultrasonic.US_TIMEOUT_NS] * expected)
 
     def test_measurement_on_pins_converts_echo_time(self):
         for cm in (2, 30, 80, 150, 399, 400):
@@ -417,7 +460,7 @@ class UltrasonicTests(_DriverTestCase):
         for t in threads:
             t.join()
         self.assertEqual(results, [100] * 40)
-        self.assertEqual(sensor.measurements, 40)
+        self.assertEqual(sensor.measurements, 40 * ultrasonic.US_MEDIAN_READS)
         self.assertFalse(sensor.overlap)
 
     def test_threads_in_simulation_get_consistent_values(self):
