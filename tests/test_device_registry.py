@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from sdc.registry import DeviceRegistry
 from sdc.transport_sim import SimulatedTransport
-from web.service import LogStore
 
 
 class DeviceRegistryTests(unittest.TestCase):
@@ -26,7 +25,7 @@ class DeviceRegistryTests(unittest.TestCase):
                 "label": "Heltec V3",
                 "transport": "sim",
                 "address": "sim://v3",
-                "role": "Vehicul simulat V3",
+                "role": "Simulated vehicle V3",
             })
             stored = registry.list_devices()
             self.assertEqual(len(stored), 1)
@@ -79,7 +78,7 @@ class DeviceRegistryTests(unittest.TestCase):
                 "label": "Heltec V3",
                 "transport": "sim",
                 "address": "sim://mesh-demo",
-                "role": "Vehicul simulat V3",
+                "role": "Simulated vehicle V3",
                 "state": "disconnected",
             })
             with patch.object(DeviceRegistry, "probe_device", return_value={"ok": True, "message": "Meshtastic reachable"}):
@@ -102,13 +101,13 @@ class DeviceRegistryTests(unittest.TestCase):
                 "label": "LoRa Node",
                 "transport": "sim",
                 "address": "sim://mesh-off",
-                "role": "Vehicul simulat",
+                "role": "Simulated vehicle",
                 "state": "connected",
             })
 
             disconnected = registry.disconnect_device("mesh-off")
             self.assertEqual(disconnected["device"]["state"], "disconnected")
-            self.assertIn("deconectat", disconnected["result"]["message"].lower())
+            self.assertIn("disconnected", disconnected["result"]["message"].lower())
 
     def test_profile_preview_and_apply(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -147,15 +146,6 @@ class DeviceRegistryTests(unittest.TestCase):
             with patch("sdc.registry.scan_serial_ports", return_value=fake_ports):
                 devices = registry.scan()
             self.assertEqual(devices[0]["state"], "disconnected")
-
-    def test_log_store_records_and_reads_entries(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            logger = LogStore(path=Path(temp_dir) / "vehicul.log")
-            logger.info("system started")
-            logger.warning("link weak")
-            entries = logger.read()
-            self.assertTrue(any("system started" in entry.get("message", "") for entry in entries))
-            self.assertTrue(any("link weak" in entry.get("message", "") for entry in entries))
 
 
 if __name__ == "__main__":

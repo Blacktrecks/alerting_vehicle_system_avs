@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import socket
 from pathlib import Path
 from typing import Any
+
+from mcd import config as mcd_config
 
 from .profile import ProjectProfile
 
@@ -43,6 +46,28 @@ def _is_likely_hardware_serial_port(device: str, description: str = "", hwid: st
     return False
 
 
+_EXTRA_MESH_HINTS = ("meshtastic", "esp32", "wireless stick")
+_FTDI_VIDS = {"0x0403", "1027"}
+
+
+def classify_port(device: str, description: str = "", hwid: str = "", by_id: str = "", vid=None) -> str:
+    """Classify a serial port as "xbee", "meshtastic" or "unknown" from vendor/product strings."""
+    text = " ".join(part for part in (by_id, description, hwid) if part)
+    kind = mcd_config.classify_serial_id(text)
+    if kind == "unknown" and any(h in text.lower() for h in _EXTRA_MESH_HINTS):
+        kind = "meshtastic"
+    if kind == "unknown" and "zigbee" in text.lower():
+        kind = "xbee"
+    if kind == "unknown" and str(vid or "").lower() in _FTDI_VIDS:
+        kind = "xbee"          # FTDI bridge: the XBee USB adapter
+    return kind
+
+
+def _by_id_names() -> dict[str, str]:
+    """Map the real device path to its /dev/serial/by-id name."""
+    return {item["realpath"]: item["id"] for item in mcd_config.list_serial_devices()}
+
+
 def scan_serial_ports() -> list[dict[str, Any]]:
     """Return serial port metadata for USB devices discovered on the host."""
     try:
@@ -51,6 +76,7 @@ def scan_serial_ports() -> list[dict[str, Any]]:
         return []
 
     discovered: list[dict[str, Any]] = []
+    by_id = _by_id_names()
     for port in list_ports.comports():
         if isinstance(port, dict):
             info = port
@@ -86,6 +112,7 @@ def scan_serial_ports() -> list[dict[str, Any]]:
             "hwid": hwid,
             "vid": paired[0],
             "pid": paired[1],
+            "by_id": by_id.get(os.path.realpath(device), ""),
         })
     return discovered
 
@@ -132,7 +159,7 @@ class DeviceRegistry:
         record = dict(device)
         record.setdefault("id", f"d{len(devices) + 1}")
         record.setdefault("transport", "sim")
-        record.setdefault("role", "Vehicul simulat")
+        record.setdefault("role", "Simulated vehicle")
         record.setdefault("state", "connected")
         devices.append(record)
         self._save(devices)
@@ -160,7 +187,7 @@ class DeviceRegistry:
     def _parse_tcp_endpoint(self, device: dict[str, Any]) -> tuple[str, int]:
         raw = str(device.get("address") or "").strip()
         if not raw:
-            raise ValueError("Adresa TCP lipsește")
+            raise ValueError("TCP address is missing")
 
         if ":" in raw:
             host, port_text = raw.rsplit(":", 1)
@@ -171,17 +198,17 @@ class DeviceRegistry:
             port = int(device.get("port") or 4403)
 
         if not host:
-            raise ValueError("Host TCP invalid")
+            raise ValueError("Invalid TCP host")
         return host, port
 
     def _serial_probe(self, device: dict[str, Any]) -> None:
         port = str(device.get("port") or device.get("address") or "").strip()
         if not port:
-            raise ValueError("Port serial lipsă")
+            raise ValueError("Serial port is missing")
         try:
             import serial
         except Exception as exc:
-            raise RuntimeError("pyserial nu este instalat") from exc
+            raise RuntimeError("pyserial is not installed") from exc
         # Open+close validates that the serial port exists and is not busy.
         handle = serial.Serial(port=port, baudrate=115200, timeout=1)
         handle.close()
@@ -249,7 +276,7 @@ class DeviceRegistry:
         device["preset"] = target["preset"]
         device["channel_name"] = target["channel_name"]
         device["last_action"] = "apply-profile"
-        device["last_message"] = "Profil aplicat: EU_868 / LONG_FAST / VEH"
+        device["last_message"] = "Profile applied: EU_868 / LONG_FAST / VEH"
         if device.get("state") != "error":
             device["state"] = "connected"
         self._save_device(device)
@@ -265,15 +292,15 @@ class DeviceRegistry:
     def probe_device(self, device: dict[str, Any]) -> dict[str, Any]:
         transport = str(device.get("transport") or "sim").strip().lower()
         if transport in {"sim", "simulated"}:
-            return {"ok": True, "message": "Dispozitiv simulat: OK"}
+            return {"ok": True, "message": "Simulated device: OK"}
         try:
             if transport in {"serial", "usb"}:
                 self._serial_probe(device)
-                return {"ok": True, "message": "Port serial accesibil"}
+                return {"ok": True, "message": "Serial port reachable"}
             if transport in {"tcp", "wifi", "meshtastic", "lora"}:
                 self._tcp_probe(device)
-                return {"ok": True, "message": "Conexiune TCP activă"}
-            return {"ok": False, "message": f"Transport necunoscut: {transport}"}
+                return {"ok": True, "message": "TCP connection active"}
+            return {"ok": False, "message": f"Unknown transport: {transport}"}
         except Exception as exc:
             return {"ok": False, "message": str(exc)}
 
@@ -288,7 +315,7 @@ class DeviceRegistry:
             opened = bool(link.connect())
             if opened:
                 self._active_links[device_id] = link
-                result = {"ok": True, "message": "Conectare Meshtastic activă"}
+                result = {"ok": True, "message": "Meshtastic connection active"}
             else:
                 result = self.probe_device(device)
         device["last_action"] = "connect"
@@ -309,7 +336,7 @@ class DeviceRegistry:
                 pass
         device["state"] = "disconnected"
         device["last_action"] = "disconnect"
-        device["last_message"] = "Dispozitiv deconectat"
+        device["last_message"] = "Device disconnected"
         self._save_device(device)
         return {"device": device, "result": {"ok": True, "message": device["last_message"]}}
 
@@ -329,18 +356,18 @@ class DeviceRegistry:
                 sent = link.send_text(node_id, test_text)
                 status_ok = sent > 0 or link.is_connected()
                 if status_ok:
-                    message = f"Test transmis către {node_id} prin {transport_name}: {sent} bytes (Meshtastic)."
+                    message = f"Test sent to {node_id} through {transport_name}: {sent} bytes (Meshtastic)."
                 else:
-                    message = f"Test eșuat prin {transport_name}: niciun payload nu a fost confirmat."
+                    message = f"Test failed through {transport_name}: no payload was confirmed."
                 result = {"ok": status_ok, "message": message}
                 if link.is_connected() and device_id not in self._active_links:
                     link.disconnect()
             except Exception as exc:  # pragma: no cover - hardware/network volatility
-                result = {"ok": False, "message": f"Test eșuat prin {transport_name}: {exc}"}
+                result = {"ok": False, "message": f"Test failed through {transport_name}: {exc}"}
         else:
             result = self.probe_device(device)
             if result["ok"]:
-                result["message"] = f"Test dummy rulat pentru {node_id}: payload simulat validat."
+                result["message"] = f"Simulated test for {node_id}: payload validated (no radio used)."
 
         device["last_action"] = "send-test"
         device["last_test"] = "ok" if result["ok"] else "failed"
@@ -370,13 +397,8 @@ class DeviceRegistry:
                 if not _is_likely_hardware_serial_port(device, description, hwid):
                     continue
                 seen.add(device)
-                lower = f"{description} {hwid}".lower()
-                transport = "serial"
-                role = "Zigbee / USB"
-                if "heltec" in lower or "meshtastic" in lower or "xiao" in lower or "esp32" in lower:
-                    role = "Vehicul Meshtastic"
-                elif "xbee" in lower or "zigbee" in lower:
-                    role = "Zigbee"
+                kind = classify_port(device, description, hwid, str(port.get("by_id") or ""), port.get("vid"))
+                role = {"meshtastic": "Meshtastic (LoRa)", "xbee": "Zigbee (XBee)"}.get(kind, "Unknown USB serial")
                 label = port.get("label") or description or device
                 if not label or str(label).lower() in {"n/a", "na", "unknown"}:
                     label = device
@@ -384,14 +406,15 @@ class DeviceRegistry:
                 record = {
                     "id": (existing or {}).get("id") or (re.sub(r"[^a-zA-Z0-9]+", "-", device).strip("-") or f"dev-{len(detected)+1}"),
                     "label": label,
-                    "type": "meshtastic" if ("heltec" in lower or "meshtastic" in lower or "xiao" in lower or "esp32" in lower) else "zigbee",
-                    "transport": transport,
+                    "type": {"xbee": "zigbee"}.get(kind, kind),
+                    "transport": "serial",
                     "address": device,
                     "port": device,
                     "role": role,
                     "state": (existing or {}).get("state") or "connected",
                     "description": description,
                     "hwid": hwid,
+                    "by_id": str(port.get("by_id") or ""),
                     "region": (existing or {}).get("region") or "UNKNOWN",
                     "preset": (existing or {}).get("preset") or "UNKNOWN",
                     "channel_name": (existing or {}).get("channel_name") or "UNKNOWN",
@@ -401,11 +424,4 @@ class DeviceRegistry:
             if detected:
                 self._save(detected)
                 return detected
-        if devices:
-            return devices
-        default = [
-            {"id": "V2", "label": "Heltec V3", "transport": "sim", "address": "sim://v3", "role": "Vehicul simulat V3", "state": "connected"},
-            {"id": "V3", "label": "XIAO", "transport": "sim", "address": "sim://xiao", "role": "Vehicul simulat V2", "state": "connected"},
-        ]
-        self._save(default)
-        return default
+        return devices
