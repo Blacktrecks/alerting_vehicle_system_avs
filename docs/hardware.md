@@ -95,9 +95,15 @@ emitter goes to GND. Put a small diode across the buzzer (cathode to 5 V) to abs
 ### Vibration sensors
 
 Use modules with a digital output (SW-420 type). Connect VCC to 3.3 V (so the output stays at 3.3 V logic), GND to GND,
-DO to GPIO22 (and the optional second module to GPIO25). The software counts edges, not levels, because an impact
-produces short bursts of pulses. Set the sensitivity with the module's potentiometer: a good setting stays quiet when the
-vehicle is parked and pulses on a knock. With only one sensor fitted, set `MCD_VIB2=0`.
+DO to GPIO22 (and the optional second module to GPIO25). Put a **10 kΩ pull-down resistor** between DO and GND: without it
+the line floats between pulses and the edge counter reports impacts that never happened. The software counts edges, not
+levels, because an impact produces short bursts of pulses. Set the sensitivity with the module's potentiometer: a good
+setting stays quiet when the vehicle is parked and pulses on a knock. With only one sensor fitted, set `MCD_VIB2=0`.
+
+Check the **polarity** of your module before trusting the count: on a normal SW-420 the comparator drives DO HIGH during an
+impact (the onboard LED lights up), so the counter must watch RISING edges. Some clones use an open-collector output that
+goes LOW on impact, which is the opposite; if the count fires when the LED is off, invert the edge in `PCS_vConfigInput`
+for those pins or fit the module with the polarity as printed on its board.
 
 ## LoRa Meshtastic boards (Heltec V3, Heltec e-ink, Seeed XIAO)
 
@@ -134,9 +140,11 @@ Names like `/dev/ttyUSB0` depend on the plug order: the XBee adapter and the Hel
 ls -l /dev/serial/by-id/
 ```
 
-Typical entries: `usb-FTDI_...` or `usb-Digi_...` is the XBee adapter; `usb-Silicon_Labs_CP2102...` is the Heltec V3 (CP210x
-bridge); `usb-Espressif...` is the e-ink board; `usb-Seeed...` is the XIAO. The Devices page of the dashboard shows what was
-detected and how each device was classified.
+Typical entries: `usb-Silicon_Labs_CP2102...` is the Heltec V3 (CP210x bridge) and `usb-WCH-CH340...` is a board with a
+CH340 bridge — these two are the adapters the boards actually use; `usb-FTDI_...` or `usb-Digi_...` is the XBee adapter.
+The e-ink board appears as `usb-Espressif...` and the XIAO as `usb-Seeed...`. Do not expect an FTDI name for a Heltec: a
+CP210x or CH340 cable is normal, and the classification follows the string, not the pin header. The Devices page of the
+dashboard shows what was detected and how each device was classified.
 
 If two candidates match (for example two FTDI adapters) the program does not guess: it reports the port as
 "ambiguous" and you set `ZIGBEE_PORT` and/or `MESHTASTIC_PORT` in `.env` to the full `/dev/serial/by-id/...` path.
