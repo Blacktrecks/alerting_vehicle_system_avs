@@ -19,8 +19,11 @@ onState(function (s) {
 
   [["mesh", s.mesh], ["zigbee", s.zigbee]].forEach(function (pair) {
     const state = document.getElementById(pair[0] + "-state");
-    state.textContent = pair[1].connected ? "connected" : "offline";
-    state.className = "badge " + (pair[1].connected ? "badge-ok" : "badge-bad");
+    // A link that is still connecting must not look offline: the connect is bounded, so the
+    // request path never waits on a dead radio.
+    const label = pair[1].state || (pair[1].connected ? "connected" : "offline");
+    state.textContent = label;
+    state.className = "badge " + (label === "connecting" ? "badge-warn" : (pair[1].connected ? "badge-ok" : "badge-bad"));
     document.getElementById(pair[0] + "-sim").hidden = !pair[1].simulated;
     document.getElementById(pair[0] + "-stats").textContent = radioLine(pair[1]);
   });

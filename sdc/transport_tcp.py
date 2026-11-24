@@ -11,8 +11,8 @@ from .transport import Transport
 class TCPTransport(Transport):
     """Minimal TCP transport for Meshtastic over WiFi."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 4403, *, name: str = "tcp"):
-        super().__init__(name=name)
+    def __init__(self, host: str = "127.0.0.1", port: int = 4403, *, name: str = "tcp", timeout: float = 0.5):
+        super().__init__(name=name, timeout=timeout)
         self.host = host
         self.port = int(port)
         self._sock: socket.socket | None = None
@@ -20,12 +20,16 @@ class TCPTransport(Transport):
         self._error: str | None = None
 
     def open(self) -> bool:
+        self._connecting = True
         try:
-            self._sock = socket.create_connection((self.host, self.port), timeout=2)
+            # Bounded connect: the request path must never wait on a dead radio.
+            self._sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         except OSError as exc:
             self._error = str(exc)
+            self._connecting = False
             self._connected = False
             return False
+        self._connecting = False
         self._connected = True
         self._error = None
         self._events.append({
@@ -53,7 +57,7 @@ class TCPTransport(Transport):
         return {
             "id": self.name,
             "name": self.name,
-            "state": "connected" if self.is_open() else "disconnected",
+            "state": self.state(),
             "transport": "tcp",
             "host": self.host,
             "port": self.port,

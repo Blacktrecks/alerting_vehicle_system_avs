@@ -8,9 +8,17 @@ from abc import ABC, abstractmethod
 class Transport(ABC):
     """Common API for serial, TCP and simulated transports."""
 
-    def __init__(self, name: str = "device"):
+    def __init__(self, name: str = "device", timeout: float = 0.5):
         self.name = name
+        self.timeout = float(timeout)
+        self._connecting = False
         self._connected = False
+
+    def state(self) -> str:
+        """connecting / connected / disconnected, for the dashboard."""
+        if self._connected:
+            return "connected"
+        return "connecting" if self._connecting else "disconnected"
 
     @abstractmethod
     def open(self) -> bool:

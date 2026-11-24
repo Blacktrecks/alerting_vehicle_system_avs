@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import threading
 from typing import Any
 
 from mcd import config
@@ -32,6 +33,7 @@ log = logging.getLogger(__name__)
 
 ALERT_PORTNUM = 256          # PRIVATE_APP
 TEXT_PORTNUM = 1             # TEXT_MESSAGE_APP
+CONNECT_TIMEOUT = 1.0        # connect must not block the caller longer than this
 _RX_QUEUE_MAX = 256
 
 
@@ -48,6 +50,7 @@ class MeshtasticLink(AlertLinkMixin):
         self.name = name
         self.host = host
         self.portnum = int(portnum)
+        self._connecting = False
         self._config_error: str | None = None
         self.port = port
         if not host and not port and modem:
@@ -67,7 +70,13 @@ class MeshtasticLink(AlertLinkMixin):
         self._init_alerts(node_id if node_id is not None else node_id_from_name(name))
 
     # -- connection ----------------------------------------------------------------------------
-    def connect(self) -> bool:
+    def connect(self, timeout: float | None = None) -> bool:
+        """Connect without blocking the caller longer than CONNECT_TIMEOUT seconds.
+
+        The meshtastic interfaces can hang for a long time on a dead radio, so the real work runs
+        in a worker thread; if it is still running after the timeout the link reports "connecting"
+        and the runtime retries later.
+        """
         if self.simulated:
             return bool(self.transport.open())
         if self._iface is not None:
@@ -78,13 +87,25 @@ class MeshtasticLink(AlertLinkMixin):
         if not self.host and not self.port:
             self._error = "no serial port or TCP host configured"
             return False
+        limit = CONNECT_TIMEOUT if timeout is None else float(timeout)
+        self._connecting = True
+        worker = threading.Thread(target=self._connect_blocking, daemon=True)
+        worker.start()
+        worker.join(limit)
+        if worker.is_alive():
+            self._error = "connect still running after %.1f s" % limit
+            return False
+        self._connecting = False
+        return self._iface is not None
+
+    def _connect_blocking(self) -> None:
         try:
             from meshtastic.serial_interface import SerialInterface  # type: ignore
             from meshtastic.tcp_interface import TCPInterface  # type: ignore
             from pubsub import pub  # type: ignore
         except Exception as exc:
             self._error = "meshtastic library not installed (%s)" % exc
-            return False
+            return
         try:
             if not self._subscribed:
                 pub.subscribe(self._on_receive, "meshtastic.receive")
@@ -96,9 +117,15 @@ class MeshtasticLink(AlertLinkMixin):
         except Exception as exc:
             self._iface = None
             self._error = str(exc)
-            return False
+            return
         self._error = None
-        return True
+
+    def state(self) -> str:
+        if self.simulated:
+            return self.transport.state()
+        if self._iface is not None:
+            return "connected"
+        return "connecting" if self._connecting else "disconnected"
 
     def disconnect(self) -> None:
         if self.simulated:
@@ -190,7 +217,7 @@ class MeshtasticLink(AlertLinkMixin):
             info = self.transport.info()
         else:
             info = {"id": self.name, "name": self.name,
-                    "state": "connected" if self.is_connected() else "disconnected",
+                    "state": self.state(),
                     "transport": "tcp" if self.host else "serial",
                     "connected": self.is_connected(), "error": self._error}
             if self.host:

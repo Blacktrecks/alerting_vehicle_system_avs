@@ -1,6 +1,7 @@
 """Tests for the SDC layer: signed alert packet, replay window, Zigbee framing and both links."""
 import os
 import tempfile
+import time
 import unittest
 
 from mcd import config
@@ -8,6 +9,7 @@ from sdc import (ALERT_LEN, BadSignatureError, FrameDecoder, MeshtasticLink, Pac
                  RESYNC_AFTER_REJECTS, ZigbeeLink, decode_alert, encode_alert, frame_encode, node_id_from_name, validate_replay)
 from sdc import packets
 from sdc.registry import classify_port
+from sdc.transport_tcp import TCPTransport
 
 NODE = 0x11223344
 
@@ -336,6 +338,35 @@ class MeshtasticLinkTests(_LinkTests, _EnvCase):
         self.assertEqual(link.send_text("^all", "hello"), 5)
         self.assertIsNone(link.recv_alert())
         self.assertEqual(link.stats()["rx_bad_format"], 0)
+
+    def test_connect_is_bounded_and_reports_connecting(self):
+        # A radio that hangs must not block the caller: connect returns after CONNECT_TIMEOUT
+        # with state "connecting", so the request path stays alive.
+        link = MeshtasticLink(host="10.99.99.99", simulated=False)
+
+        def slow_blocking():
+            time.sleep(2)
+
+        link._connect_blocking = slow_blocking
+        started = time.monotonic()
+        self.assertFalse(link.connect())
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertEqual(link.state(), "connecting")
+        # The bounded TCP connect uses the transport timeout instead of a long default.
+        tcp = TCPTransport(host="127.0.0.1", port=1)
+        self.assertAlmostEqual(tcp.timeout, 0.5)
+
+    def test_zigbee_state_reports_connecting(self):
+        link = ZigbeeLink(port="/dev/ttyUSB9", simulated=False)
+
+        def slow_open():
+            link.transport._connecting = True
+            return False
+
+        link.transport.open = slow_open
+        self.assertFalse(link.connect())
+        self.assertEqual(link.state(), "connecting")
+        self.assertEqual(link.info()["state"], "connecting")
 
     def test_several_instances_are_independent(self):
         a, b = self.make(loopback=True), MeshtasticLink(name="other", loopback=True)

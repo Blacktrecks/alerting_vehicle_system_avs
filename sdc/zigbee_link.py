@@ -73,9 +73,13 @@ class ZigbeeLink(AlertLinkMixin):
     def poll(self) -> list[dict[str, Any]]:
         return list(self.transport.poll())
 
+    def state(self) -> str:
+        return self.transport.state()
+
     def info(self) -> dict[str, Any]:
         info = self.transport.info()
         info.setdefault("role", "zigbee")
+        info["state"] = self.state()
         info["device_type"] = "zigbee"
         info["simulated"] = self.simulated
         info["port"] = self.port

@@ -41,8 +41,9 @@ def _err(status, message):
 
 # ----------------------------------------------------------------------------- state
 def _link_state(info):
-    return {"connected": bool(info.get("connected")), "simulated": info.get("simulated"),
-            "node_id": info.get("node_id"), "stats": info.get("stats", {}), "error": info.get("error")}
+    return {"connected": bool(info.get("connected")), "state": info.get("state") or "disconnected",
+            "simulated": info.get("simulated"), "node_id": info.get("node_id"),
+            "stats": info.get("stats", {}), "error": info.get("error")}
 
 
 def state():
