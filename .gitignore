@@ -6,3 +6,7 @@ __pycache__/
 .env
 reports/
 staticfiles/
+
+# Binary office/archive files: the guide lives as Markdown in docs/, do not commit these.
+*.docx
+*.zip
